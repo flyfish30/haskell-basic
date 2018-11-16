@@ -1,5 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 
+import Data.Monoid
+
 -- Free Functor
 data FreeF f a = forall x. FreeF (x -> a) (f x)
 
@@ -71,10 +73,20 @@ newtype Fix f = In { out :: f (Fix f) }
 cata :: Functor f => Alg f a -> Fix f -> a
 cata f = f . fmap (cata f) . out
 
+data List a = Nil | Cons a (List a)
+
 data ListF e a = NilF | ConsF e a
 instance Functor (ListF e) where
   fmap f NilF = NilF
   fmap f (ConsF e a) = ConsF e (f a)
+
+sumAlgListF :: Alg (ListF Int) Int
+sumAlgListF NilF = 0
+sumAlgListF (ConsF x l) = x + l
+
+prodAlgListF :: Alg (ListF Int) Int
+prodAlgListF NilF = 1
+prodAlgListF (ConsF x l) = x * l
 
 data MonF a = MEmpty | MAppend a a
 
