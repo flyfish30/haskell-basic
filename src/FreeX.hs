@@ -1,4 +1,5 @@
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 import Data.Monoid
 
@@ -69,13 +70,17 @@ foldFree f (Free ff) = f $ fmap (foldFree f) ff
 type Alg f a = f a -> a
 
 newtype Fix f = In { out :: f (Fix f) }
+instance Show (f (Fix f)) => Show (Fix f) where
+  show (In fix) = "(In " ++ "(" ++ show fix ++ "))"
 
 cata :: Functor f => Alg f a -> Fix f -> a
 cata f = f . fmap (cata f) . out
 
 data List a = Nil | Cons a (List a)
+              deriving Show
 
 data ListF e a = NilF | ConsF e a
+                 deriving Show
 instance Functor (ListF e) where
   fmap f NilF = NilF
   fmap f (ConsF e a) = ConsF e (f a)
@@ -87,6 +92,14 @@ sumAlgListF (ConsF x l) = x + l
 prodAlgListF :: Alg (ListF Int) Int
 prodAlgListF NilF = 1
 prodAlgListF (ConsF x l) = x * l
+
+listAlg :: Alg (ListF a) (List a)
+listAlg NilF = Nil
+listAlg (ConsF x l) = Cons x l
+
+ghcListAlg :: Alg (ListF a) [a]
+ghcListAlg NilF = []
+ghcListAlg (ConsF x l) = x : l
 
 data MonF a = MEmpty | MAppend a a
 
