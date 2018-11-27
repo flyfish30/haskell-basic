@@ -1,5 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE RankNTypes #-}
 
 import Data.Monoid
 
@@ -71,38 +73,77 @@ type Alg f a = f a -> a
 
 newtype Fix f = In { out :: f (Fix f) }
 instance Show (f (Fix f)) => Show (Fix f) where
-  show (In fix) = "(In " ++ "(" ++ show fix ++ "))"
+  show (In fix) = "(In (" ++ show fix ++ "))"
 
 cata :: Functor f => Alg f a -> Fix f -> a
-cata f = f . fmap (cata f) . out
+cata alg = alg . fmap (cata alg) . out
 
 data List a = Nil | Cons a (List a)
               deriving Show
 
-data ListF e a = NilF | ConsF e a
+data ListF a x = NilF | ConsF a x
                  deriving Show
-instance Functor (ListF e) where
+instance Functor (ListF a) where
   fmap f NilF = NilF
-  fmap f (ConsF e a) = ConsF e (f a)
+  fmap f (ConsF a x) = ConsF a (f x)
 
 sumAlgListF :: Alg (ListF Int) Int
 sumAlgListF NilF = 0
-sumAlgListF (ConsF x l) = x + l
+sumAlgListF (ConsF a l) = a + l
 
 prodAlgListF :: Alg (ListF Int) Int
 prodAlgListF NilF = 1
-prodAlgListF (ConsF x l) = x * l
+prodAlgListF (ConsF a l) = a * l
 
 listAlg :: Alg (ListF a) (List a)
 listAlg NilF = Nil
-listAlg (ConsF x l) = Cons x l
+listAlg (ConsF a l) = Cons a l
 
 ghcListAlg :: Alg (ListF a) [a]
 ghcListAlg NilF = []
-ghcListAlg (ConsF x l) = x : l
+ghcListAlg (ConsF a l) = a : l
 
 data MonF a = MEmpty | MAppend a a
 
-algMon :: Monoid a => MonF a -> a
+algMon :: Monoid a => Alg MonF a
 algMon MEmpty = mempty
-algMon (MAppend a b) = a <> b
+algMon (MAppend a b) = mappend a b
+
+-- Higher order F-Alg ------
+infixr 0 :~>
+type f :~> g = forall a. f a -> g a
+type Natural f g = f :~> g
+
+class HFunctor hf where
+  hfmap :: (g :~> h) -> hf g :~> hf h
+  ffmap :: Functor g => (a -> b) -> hf g a -> hf g b
+
+type HAlg hf f = hf f :~> f
+
+newtype HFix hf a = InH { outH :: hf (HFix hf) a }
+instance Show (hf (HFix hf) a) => Show (HFix hf a) where
+  show (InH hfix) = "(InH (" ++ show hfix ++ "))"
+
+hcata :: (HFunctor hf, Functor f) => HAlg hf f -> HFix hf :~> f
+hcata halg = halg . hfmap (hcata halg) . outH
+
+data FList f a = FNil a | FCons (f (FList f a))
+instance (Show (f (FList f a)), Show a) => Show (FList f a) where
+  show (FNil a) = "FNil " ++ show a
+  show (FCons fx) = "Fcons " ++ show fx
+
+data FListF f g a = FNilF a | FConsF (f (g a))
+instance (Show (f (g a)), Show a) => Show (FListF f g a) where
+  show (FNilF a) = "FNilF " ++ show a
+  show (FConsF fga) = "FConsF " ++ show fga
+
+instance Functor f => HFunctor (FListF f) where
+  hfmap nat (FNilF a) = FNilF a
+  hfmap nat (FConsF fga) = FConsF (fmap nat fga)
+  ffmap k (FNilF a) = FNilF (k a)
+  ffmap k (FConsF fga) = FConsF (fmap (fmap k) fga)
+
+algFreeM :: HAlg (FListF f) (Free f)
+algFreeM (FNilF a) = Pure a
+algFreeM (FConsF ffra) = Free ffra
+
