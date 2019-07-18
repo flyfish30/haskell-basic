@@ -2,8 +2,13 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 import Data.Monoid
+
+infixr 0 :~>
+type f :~> g = forall a. f a -> g a
+type Natural f g = f :~> g
 
 -- Free Functor
 data FreeF f a = forall x. FreeF (x -> a) (f x)
@@ -31,42 +36,53 @@ data FreeA f a = PureA a
                | forall b. f (b -> a) :$: FreeA f b
 
 instance Functor f => Functor (FreeA f) where
-  fmap f (PureA a) = PureA (f a)
-  fmap f (h :$: fra) = fmap (f .) h :$: fra
+  fmap f (PureA a)    = PureA (f a)
+  fmap f (h :$: ffra) = fmap (f .) h :$: ffra
 
 instance Functor f => Applicative (FreeA f) where
   pure = PureA
-  (PureA f) <*> fra = fmap f fra
-  (h :$: frf) <*> fra = fmap uncurry h :$: ((,) <$> frf <*> fra)
+  (PureA g)    <*> x = fmap g x
+  (h :$: ffrg) <*> x = fmap uncurry h :$: ((,) <$> ffrg <*> x)
 
 -- Free Monad
 data Free f a = Pure a
               | Free (f (Free f a))
 
 instance Functor f => Functor (Free f) where
-  fmap f (Pure a)  = Pure (f a)
-  fmap f (Free ff) = Free (fmap (fmap f) ff)
+  fmap f (Pure a)    = Pure (f a)
+  fmap f (Free ffra) = Free (fmap (fmap f) ffra)
 
 instance Functor f => Applicative (Free f) where
   pure = Pure
-  (Pure f)  <*> x = fmap f x
-  (Free ff) <*> x = Free (fmap (<*> x) ff)
+  (Pure g)    <*> x = fmap g x
+  (Free ffrg) <*> x = Free (fmap (<*> x) ffrg)
 
 instance Functor f => Monad (Free f) where
   return = Pure
-  (Pure a)  >>= f = f a
-  (Free ff) >>= f = Free (fmap (>>= f) ff)
+  (Pure a)    >>= k = k a
+  (Free ffra) >>= k = Free (fmap (>>= k) ffra)
 
 concatFree :: Functor f => Free f (Free f a) -> Free f a
-concatFree (Pure fr) = fr
-concatFree (Free ff) = Free (fmap concatFree ff)
+concatFree (Pure fr)   = fr
+concatFree (Free frfr) = Free (fmap concatFree frfr)
 
 liftFree :: Functor f => forall a. f a -> Free f a
 liftFree = Free . fmap Pure
 
 foldFree :: Functor f => forall a. (f a -> a) -> Free f a -> a
-foldFree f (Pure a) = a
-foldFree f (Free ff) = f $ fmap (foldFree f) ff
+foldFree f (Pure a)    = a
+foldFree f (Free ffra) = f $ fmap (foldFree f) ffra
+
+-- hoistFree
+freeMap :: (Functor f, Functor g) => (f :~> g) -> Free f a -> Free g a
+freeMap phi (Pure a)    = Pure a
+freeMap phi (Free ffra) = Free (phi (fmap (freeMap phi) ffra))
+
+monad :: Monad m => Free m :~> m
+monad (Pure a) = return a
+monad (Free mfr) = do
+  ma <- mfr
+  monad ma
 
 -- F-Alg and Free Monad
 type Alg f a = f a -> a
@@ -110,10 +126,6 @@ algMon MEmpty = mempty
 algMon (MAppend a b) = mappend a b
 
 -- Higher order F-Alg ------
-infixr 0 :~>
-type f :~> g = forall a. f a -> g a
-type Natural f g = f :~> g
-
 class HFunctor hf where
   hfmap :: (g :~> h) -> hf g :~> hf h
   ffmap :: Functor g => (a -> b) -> hf g a -> hf g b
@@ -127,6 +139,7 @@ instance Show (hf (HFix hf) a) => Show (HFix hf a) where
 hcata :: (HFunctor hf, Functor f) => HAlg hf f -> HFix hf :~> f
 hcata halg = halg . hfmap (hcata halg) . outH
 
+-- FList f a is same as Free f a
 data FList f a = FNil a | FCons (f (FList f a))
 instance (Show (f (FList f a)), Show a) => Show (FList f a) where
   show (FNil a) = "FNil " ++ show a
@@ -138,12 +151,34 @@ instance (Show (f (g a)), Show a) => Show (FListF f g a) where
   show (FConsF fga) = "FConsF " ++ show fga
 
 instance Functor f => HFunctor (FListF f) where
-  hfmap nat (FNilF a) = FNilF a
+  hfmap nat (FNilF a)    = FNilF a
   hfmap nat (FConsF fga) = FConsF (fmap nat fga)
-  ffmap k (FNilF a) = FNilF (k a)
+  ffmap k (FNilF a)    = FNilF (k a)
   ffmap k (FConsF fga) = FConsF (fmap (fmap k) fga)
 
 algFreeM :: HAlg (FListF f) (Free f)
 algFreeM (FNilF a) = Pure a
 algFreeM (FConsF ffra) = Free ffra
+
+-- FreeMF f g a is same as FListF f g a
+data FreeMF f g a = PureMF a | FreeMF (f (g a))
+instance Functor f => HFunctor (FreeMF f) where
+  hfmap nat (PureMF a)   = PureMF a
+  hfmap nat (FreeMF fga) = FreeMF $ fmap nat fga
+  ffmap f   (PureMF a)   = PureMF (f a)
+  ffmap f   (FreeMF fga) = FreeMF $ fmap (fmap f) fga
+
+-- FList = HFix (FListF f) = HFix (FreeMF f)
+instance Functor f => Functor (HFix (FreeMF f)) where
+  fmap f (InH frmf) = InH (ffmap f frmf)
+
+instance Functor f => Applicative (HFix (FreeMF f)) where
+  pure = InH . PureMF
+  (InH (PureMF f))   <*> hfix = fmap f hfix
+  (InH (FreeMF frf)) <*> hfix = InH . FreeMF $ fmap (<*> hfix) frf
+
+instance Functor f => Monad (HFix (FreeMF f)) where
+  return = InH . PureMF
+  (InH (PureMF a))   >>= k = k a
+  (InH (FreeMF fga)) >>= k = InH . FreeMF $ fmap (>>= k) fga
 
