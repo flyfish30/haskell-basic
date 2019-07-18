@@ -26,9 +26,8 @@ inr :: b2 -> (b1 + b2)
 inr y = Right y
 
 (\/) :: (b1 -> a) -> (b2 -> a) -> (b1 + b2) -> a
-g1 \/ g2 = \x -> case x of
-                   (Left  l) -> g1 l
-                   (Right r) -> g2 r
+(g1 \/ g2) (Left x)  = g1 x
+(g1 \/ g2) (Right y) = g2 y
 
 class Bifunctor p where
   bimap :: (a1 -> b1) -> (a2 -> b2) -> p a1 a2 -> p b1 b2
@@ -39,6 +38,15 @@ instance Bifunctor (,) where
 instance Bifunctor Either where
   bimap f1 f2 (Left  l) = Left  (f1 l)
   bimap f1 f2 (Right r) = Right (f2 r)
+
+assoc  ((a, b), c) = (a, (b, c))
+cossoc (a, (b, c)) = ((a, b), c)
+
+-- ($) is id at function
+apply = uncurry ($)
+
+mu :: (a -> a, a -> a) -> a -> a
+mu = curry (apply . bimap ($) apply . assoc)
 
 -- | Product functor f and g
 data Product f g a = Pair (f a) (g a)
@@ -51,3 +59,4 @@ data Coproduct f g a = InL (f a) | InR (g a)
                      deriving Show
 infixr 5 :+:
 type (:+:) = Coproduct
+
