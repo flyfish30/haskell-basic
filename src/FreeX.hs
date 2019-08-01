@@ -1,10 +1,10 @@
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances, FlexibleInstances #-}
+{-# LANGUAGE TypeOperators, RankNTypes #-}
+{-# LANGUAGE DeriveFunctor #-}
 
 import Data.Monoid
+import Data.Functor.Const
 
 infixr 0 :~>
 type f :~> g = forall a. f a -> g a
@@ -44,6 +44,11 @@ instance Functor f => Applicative (FreeA f) where
   (PureA g)    <*> x = fmap g x
   (h :$: ffrg) <*> x = fmap uncurry h :$: ((,) <$> ffrg <*> x)
 
+-- ^ Impelement join for Monad
+{-# INLINE join #-}
+join :: Monad m => m (m a) -> m a
+join = (>>= id)
+
 -- Free Monad
 data Free f a = Pure a
               | Free (f (Free f a))
@@ -80,9 +85,8 @@ freeMap phi (Free ffra) = Free (phi (fmap (freeMap phi) ffra))
 
 monad :: Monad m => Free m :~> m
 monad (Pure a) = return a
-monad (Free mfr) = do
-  ma <- mfr
-  monad ma
+monad (Free mfr) = mfr >>= monad
+-- monad (Free mfr) = join (fmap monad mfr)
 
 -- F-Alg and Free Monad
 type Alg f a = f a -> a
@@ -93,6 +97,9 @@ instance Show (f (Fix f)) => Show (Fix f) where
 
 cata :: Functor f => Alg f a -> Fix f -> a
 cata alg = alg . fmap (cata alg) . out
+
+-- Free monoid is List a
+type FreeMon a = List a
 
 data List a = Nil | Cons a (List a)
               deriving Show
@@ -119,11 +126,25 @@ ghcListAlg :: Alg (ListF a) [a]
 ghcListAlg NilF = []
 ghcListAlg (ConsF a l) = a : l
 
-data MonF a = MEmpty | MAppend a a
+data MonF a = MEmptyF | MAppendF a a
 
 algMon :: Monoid a => Alg MonF a
-algMon MEmpty = mempty
-algMon (MAppend a b) = mappend a b
+algMon MEmptyF = mempty
+algMon (MAppendF a b) = mappend a b
+
+class Monoid' m where
+  monoid :: FreeMon m -> m
+
+mempty' :: Monoid' m => m
+mempty' = monoid Nil
+
+mappend' :: Monoid' m => m -> m -> m
+mappend' a b = monoid . Cons a $ Cons b Nil
+-- mappend' = curry $ monoid . uncurry (flip Cons . flip Cons Nil)
+
+instance Monoid' Int where
+  monoid Nil = 0
+  monoid (Cons a frm) = a + monoid frm
 
 -- Higher order F-Alg ------
 class HFunctor hf where
@@ -156,10 +177,6 @@ instance Functor f => HFunctor (FListF f) where
   ffmap k (FNilF a)    = FNilF (k a)
   ffmap k (FConsF fga) = FConsF (fmap (fmap k) fga)
 
-algFreeM :: HAlg (FListF f) (Free f)
-algFreeM (FNilF a) = Pure a
-algFreeM (FConsF ffra) = Free ffra
-
 -- FreeMF f g a is same as FListF f g a
 data FreeMF f g a = PureMF a | FreeMF (f (g a))
 instance Functor f => HFunctor (FreeMF f) where
@@ -168,17 +185,135 @@ instance Functor f => HFunctor (FreeMF f) where
   ffmap f   (PureMF a)   = PureMF (f a)
   ffmap f   (FreeMF fga) = FreeMF $ fmap (fmap f) fga
 
--- FList = HFix (FListF f) = HFix (FreeMF f)
+-- Free f =  FList f = HFix (FListF f) = HFix (FreeMF f)
+type FreeMonad f = HFix (FreeMF f)
+
+algMonad :: Monad m => HAlg (FreeMF m) m
+algMonad (PureMF a)   = return a
+algMonad (FreeMF fga) = join fga
+
+class Functor m => Monad' m where
+  monad' :: Free m :~> m
+
+instance Monad' Maybe where
+  monad' (Pure a) = Just a
+  monad' (Free Nothing) = Nothing
+  monad' (Free (Just frm)) = monad' frm
+
+return' :: Monad' m => a -> m a
+return' = monad' . Pure
+
+join' :: Monad' m => m (m a) -> m a
+join' = monad' . Free . fmap (Free . fmap Pure)
+
+bind' :: Monad' m => m a -> (a -> m b) -> m b
+bind' m k = join' (fmap k m)
+
+liftMF :: Functor f => f a -> FreeMonad f a
+liftMF = InH . FreeMF . fmap (InH . PureMF)
+
 instance Functor f => Functor (HFix (FreeMF f)) where
   fmap f (InH frmf) = InH (ffmap f frmf)
 
 instance Functor f => Applicative (HFix (FreeMF f)) where
   pure = InH . PureMF
-  (InH (PureMF f))   <*> hfix = fmap f hfix
-  (InH (FreeMF frf)) <*> hfix = InH . FreeMF $ fmap (<*> hfix) frf
+  (InH (PureMF f))   <*> fixmf = fmap f fixmf
+  (InH (FreeMF frf)) <*> fixmf = InH . FreeMF $ fmap (<*> fixmf) frf
 
 instance Functor f => Monad (HFix (FreeMF f)) where
   return = InH . PureMF
   (InH (PureMF a))   >>= k = k a
   (InH (FreeMF fga)) >>= k = InH . FreeMF $ fmap (>>= k) fga
 
+-- Free Monad example
+--
+-- data Const a b = Const { getConst :: a }
+
+data Writer w a = Writer { runWriter :: (a, w) }
+                deriving Functor
+
+instance Monoid w => Applicative (Writer w) where
+  pure a = Writer (a, mempty)
+  (Writer (f, w)) <*> (Writer (a, w1)) = Writer (f a, w `mappend` w1)
+
+instance Monoid w => Monad (Writer w) where
+  return a = Writer (a, mempty)
+  (Writer (a, w)) >>= k = Writer $ let (a1, w1) = runWriter (k a)
+                                   in (a1, w `mappend` w1)
+
+data State s a = State { runState :: s -> (a, s) }
+
+get :: State s s
+get = State $ \s -> (s, s)
+
+put :: s -> State s ()
+put s = State $ \s -> ((), s)
+
+{-
+instance (Show s, Show a) => Show (State s a) where
+  show (State (\s -> (a, s))) = show s ++ " -> (" ++ show a ++ ", " ++ show s ++ ")"
+-}
+
+instance Functor (State s) where
+  fmap f state = State $ \s -> let (a, s1) = runState state s
+                               in  (f a, s1)
+
+instance Applicative (State s) where
+  pure a = State $ \s -> (a, s)
+  statef <*> state = State $ \s -> let (f, s1) = runState statef s
+                                       (a, s2) = runState state s1
+                                   in  (f a, s2)
+
+instance Monad (State s) where
+  return a    = State $ \s -> (a, s)
+  state >>= k = State $ \s -> let (a1, s1) = runState state s
+                              in  runState (k a1) s1
+
+instance Monad' (State s) where
+  monad' (Pure a) = State $ \s -> (a, s)
+  monad' (Free state) = State $ \s -> let (a, s1) = runState state s
+                                      in  runState (monad' a) s1
+
+data StackF k = Push Int k
+              | Pop k
+              | Top (Int -> k)
+              | Add k
+              | Mul k
+              deriving Functor
+
+type FreeStack = Free StackF
+
+push x = liftFree (Push x ())
+pop    = liftFree (Pop ())
+top    = liftFree (Top id)
+add    = liftFree (Add ())
+mul    = liftFree (Mul ())
+
+calc = do 
+  push 3
+  push 4
+  add
+  push 5
+  mul
+  x <- top
+  pop
+  return x
+
+type MemState = State [Int]
+
+interp :: (Functor f, Monad m) => (f :~> m) -> (Free f :~> m)
+interp phi = monad . freeMap phi
+
+phiRun :: StackF k -> MemState k
+phiRun (Push a k) = State $ \s -> (k, a:s)
+phiRun (Pop k)    = State $ \s -> (k, tail s)
+phiRun (Top ik)   = State $ \s -> (ik (head s), s)
+phiRun (Add k)    = State $ \s@(x:y:ts) -> (k, (x + y) : ts)
+phiRun (Mul k)    = State $ \s@(x:y:ts) -> (k, (x * y) : ts)
+
+phiShow :: StackF k -> Writer String k
+phiShow (Push a k) = Writer (k, "Push " ++ show a ++ ", ")
+phiShow (Pop k)    = Writer (k, "Pop, ")
+phiShow (Top ik)   = Writer (ik 42, "Top, ")
+phiShow (Add k)    = Writer (k, "Add, ")
+phiShow (Mul k)    = Writer (k, "Mul, ")
