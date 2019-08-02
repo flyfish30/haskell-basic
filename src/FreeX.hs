@@ -106,9 +106,19 @@ data List a = Nil | Cons a (List a)
 
 data ListF a x = NilF | ConsF a x
                  deriving Show
+
 instance Functor (ListF a) where
   fmap f NilF = NilF
   fmap f (ConsF a x) = ConsF a (f x)
+
+instance Semigroup (Fix (ListF a)) where
+  (In NilF) <> fixl2         = fixl2
+  fixl1     <> (In NilF)     = fixl1
+  (In (ConsF a l1)) <> fixl2 = In (ConsF a (mappend l1 fixl2))
+
+instance Monoid (Fix (ListF a)) where
+  mempty = In NilF
+  mappend = (<>)
 
 sumAlgListF :: Alg (ListF Int) Int
 sumAlgListF NilF = 0
@@ -224,6 +234,7 @@ instance Functor f => Monad (HFix (FreeMF f)) where
   return = InH . PureMF
   (InH (PureMF a))   >>= k = k a
   (InH (FreeMF fga)) >>= k = InH . FreeMF $ fmap (>>= k) fga
+
 
 -- Free Monad example
 --
