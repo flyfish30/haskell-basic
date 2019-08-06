@@ -328,3 +328,35 @@ phiShow (Pop k)    = Writer (k, "Pop, ")
 phiShow (Top ik)   = Writer (ik 42, "Top, ")
 phiShow (Add k)    = Writer (k, "Add, ")
 phiShow (Mul k)    = Writer (k, "Mul, ")
+
+pushF x = liftMF (Push x ())
+popF    = liftMF (Pop ())
+topF    = liftMF (Top id)
+addF    = liftMF (Add ())
+mulF    = liftMF (Mul ())
+
+calcF = do 
+  pushF 3
+  pushF 4
+  addF
+  pushF 5
+  mulF
+  x <- topF
+  popF
+  return x
+
+runAlg :: HAlg (FreeMF StackF) MemState
+runAlg (PureMF a) = return a
+runAlg (FreeMF (Push a k)) = (State $ \s -> ((), a:s)) >> k
+runAlg (FreeMF (Pop k)) = (State $ \s -> ((), tail s)) >> k
+runAlg (FreeMF (Top ik)) = get >>= ik . head
+runAlg (FreeMF (Add k)) = (State $ \s@(x:y:ts) -> ((), (x+y):ts)) >> k
+runAlg (FreeMF (Mul k)) = (State $ \s@(x:y:ts) -> ((), (x*y):ts)) >> k
+
+runShow :: HAlg (FreeMF StackF) (Const String)
+runShow (PureMF a) = Const "Done!"
+runShow (FreeMF (Push a k)) = Const $ "Push " ++ show a ++ ", " ++ getConst k
+runShow (FreeMF (Pop k)) = Const $ "Pop, " ++ getConst k
+runShow (FreeMF (Top ik)) = Const $ "Top, " ++ getConst (ik 42)
+runShow (FreeMF (Add k)) = Const $ "Add, " ++ getConst k
+runShow (FreeMF (Mul k)) = Const $ "Mul, " ++ getConst k
