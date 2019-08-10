@@ -3,6 +3,8 @@
 {-# LANGUAGE TypeOperators, RankNTypes #-}
 {-# LANGUAGE DeriveFunctor #-}
 
+module FreeX () where
+
 import Data.Monoid
 import Data.Functor.Const
 
@@ -312,9 +314,12 @@ calc = do
 
 type MemState = State [Int]
 
+-- | This function is only for demostrate f = free f . ins
+--   I don't know how to implement the function that would be pass to interp
 interp :: (Functor f, Monad m) => (f :~> m) -> (Free f :~> m)
 interp phi = monad . freeMap phi
 
+{-
 phiRun :: StackF k -> MemState k
 phiRun (Push a k) = State $ \s -> (k, a:s)
 phiRun (Pop k)    = State $ \s -> (k, tail s)
@@ -328,6 +333,24 @@ phiShow (Pop k)    = Writer (k, "Pop, ")
 phiShow (Top ik)   = Writer (ik 42, "Top, ")
 phiShow (Add k)    = Writer (k, "Add, ")
 phiShow (Mul k)    = Writer (k, "Mul, ")
+-}
+
+interpState :: Free StackF Int -> MemState Int
+interpState (Pure a) = return a
+interpState (Free (Push a k)) = (State $ \s -> ((), a:s)) >> interpState k
+interpState (Free (Pop k)) = (State $ \s -> ((), tail s)) >> interpState k
+interpState (Free (Top ik)) = (State $ \s -> (ik (head s), s)) >>= interpState
+interpState (Free (Add k)) = (State $ \s@(x:y:ts) -> ((), (x + y) : ts)) >> interpState k
+interpState (Free (Mul k)) = (State $ \s@(x:y:ts) -> ((), (x * y) : ts)) >> interpState k
+
+-- Const String is not a monad, but can get generate all calculation string
+interpShow :: Show a => Free StackF a -> Const String ()
+interpShow (Pure a) = Const "Done!"
+interpShow (Free (Push a k)) = Const $ "Push " ++ show a ++ ", " ++ getConst (interpShow k)
+interpShow (Free (Pop k)) = Const $ "Pop, " ++ getConst (interpShow k)
+interpShow (Free (Top ik)) = Const $ "Top, " ++ getConst (interpShow (ik 42))
+interpShow (Free (Add k)) = Const $ "Add, " ++ getConst (interpShow k)
+interpShow (Free (Mul k)) = Const $ "Mul, " ++ getConst (interpShow k)
 
 pushF x = liftMF (Push x ())
 popF    = liftMF (Pop ())
@@ -353,6 +376,7 @@ runAlg (FreeMF (Top ik)) = get >>= ik . head
 runAlg (FreeMF (Add k)) = (State $ \s@(x:y:ts) -> ((), (x+y):ts)) >> k
 runAlg (FreeMF (Mul k)) = (State $ \s@(x:y:ts) -> ((), (x*y):ts)) >> k
 
+-- Const String is not a monad, but can get generate all calculation string
 runShow :: HAlg (FreeMF StackF) (Const String)
 runShow (PureMF a) = Const "Done!"
 runShow (FreeMF (Push a k)) = Const $ "Push " ++ show a ++ ", " ++ getConst k
