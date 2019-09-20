@@ -1,6 +1,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE UndecidableInstances, FlexibleInstances #-}
-{-# LANGUAGE TypeOperators, RankNTypes #-}
+{-# LANGUAGE TypeOperators, TypeApplications, RankNTypes #-}
 {-# LANGUAGE DeriveFunctor #-}
 
 module FreeX () where
@@ -314,18 +314,23 @@ calc = do
 
 type MemState = State [Int]
 
--- | This function is only for demostrate f = free f . ins
---   I don't know how to implement the function that would be pass to interp
+-- | This function is used for demostrate f = free f . ins
 interp :: (Functor f, Monad m) => (f :~> m) -> (Free f :~> m)
 interp phi = monad . freeMap phi
 
-{-
 phiRun :: StackF k -> MemState k
 phiRun (Push a k) = State $ \s -> (k, a:s)
 phiRun (Pop k)    = State $ \s -> (k, tail s)
 phiRun (Top ik)   = State $ \s -> (ik (head s), s)
 phiRun (Add k)    = State $ \s@(x:y:ts) -> (k, (x + y) : ts)
 phiRun (Mul k)    = State $ \s@(x:y:ts) -> (k, (x * y) : ts)
+{-
+phiRun (Push a k) = (State $ \s -> ((), a:s)) >> return k
+phiRun (Pop k)    = (State $ \s -> ((), tail s)) >> return k
+phiRun (Top ik)   = (State $ \s -> ((head s), s)) >>= return . ik
+phiRun (Add k)    = (State $ \s@(x:y:ts) -> ((), (x + y) : ts)) >> return k
+phiRun (Mul k)    = (State $ \s@(x:y:ts) -> ((), (x * y) : ts)) >> return k
+-}
 
 phiShow :: StackF k -> Writer String k
 phiShow (Push a k) = Writer (k, "Push " ++ show a ++ ", ")
@@ -333,24 +338,30 @@ phiShow (Pop k)    = Writer (k, "Pop, ")
 phiShow (Top ik)   = Writer (ik 42, "Top, ")
 phiShow (Add k)    = Writer (k, "Add, ")
 phiShow (Mul k)    = Writer (k, "Mul, ")
+{-
+phiShow (Push a k) = Writer ((), "Push " ++ show a ++ ", ") >> return k
+phiShow (Pop k)    = Writer ((), "Pop, ") >> return k
+phiShow (Top ik)   = Writer (42, "Top, ") >>= return . ik
+phiShow (Add k)    = Writer ((), "Add, ") >> return k
+phiShow (Mul k)    = Writer ((), "Mul, ") >> return k
 -}
 
 interpState :: Free StackF Int -> MemState Int
 interpState (Pure a) = return a
 interpState (Free (Push a k)) = (State $ \s -> ((), a:s)) >> interpState k
-interpState (Free (Pop k)) = (State $ \s -> ((), tail s)) >> interpState k
+interpState (Free (Pop k))  = (State $ \s -> ((), tail s)) >> interpState k
 interpState (Free (Top ik)) = (State $ \s -> (ik (head s), s)) >>= interpState
-interpState (Free (Add k)) = (State $ \s@(x:y:ts) -> ((), (x + y) : ts)) >> interpState k
-interpState (Free (Mul k)) = (State $ \s@(x:y:ts) -> ((), (x * y) : ts)) >> interpState k
+interpState (Free (Add k))  = (State $ \s@(x:y:ts) -> ((), (x + y) : ts)) >> interpState k
+interpState (Free (Mul k))  = (State $ \s@(x:y:ts) -> ((), (x * y) : ts)) >> interpState k
 
 -- Const String is not a monad, but can get generate all calculation string
 interpShow :: Show a => Free StackF a -> Const String ()
 interpShow (Pure a) = Const "Done!"
 interpShow (Free (Push a k)) = Const $ "Push " ++ show a ++ ", " ++ getConst (interpShow k)
-interpShow (Free (Pop k)) = Const $ "Pop, " ++ getConst (interpShow k)
+interpShow (Free (Pop k))  = Const $ "Pop, " ++ getConst (interpShow k)
 interpShow (Free (Top ik)) = Const $ "Top, " ++ getConst (interpShow (ik 42))
-interpShow (Free (Add k)) = Const $ "Add, " ++ getConst (interpShow k)
-interpShow (Free (Mul k)) = Const $ "Mul, " ++ getConst (interpShow k)
+interpShow (Free (Add k))  = Const $ "Add, " ++ getConst (interpShow k)
+interpShow (Free (Mul k))  = Const $ "Mul, " ++ getConst (interpShow k)
 
 pushF x = liftMF (Push x ())
 popF    = liftMF (Pop ())
@@ -371,16 +382,17 @@ calcF = do
 runAlg :: HAlg (FreeMF StackF) MemState
 runAlg (PureMF a) = return a
 runAlg (FreeMF (Push a k)) = (State $ \s -> ((), a:s)) >> k
-runAlg (FreeMF (Pop k)) = (State $ \s -> ((), tail s)) >> k
+runAlg (FreeMF (Pop k))  = (State $ \s -> ((), tail s)) >> k
 runAlg (FreeMF (Top ik)) = get >>= ik . head
-runAlg (FreeMF (Add k)) = (State $ \s@(x:y:ts) -> ((), (x+y):ts)) >> k
-runAlg (FreeMF (Mul k)) = (State $ \s@(x:y:ts) -> ((), (x*y):ts)) >> k
+runAlg (FreeMF (Add k))  = (State $ \s@(x:y:ts) -> ((), (x+y):ts)) >> k
+runAlg (FreeMF (Mul k))  = (State $ \s@(x:y:ts) -> ((), (x*y):ts)) >> k
 
 -- Const String is not a monad, but can get generate all calculation string
 runShow :: HAlg (FreeMF StackF) (Const String)
 runShow (PureMF a) = Const "Done!"
 runShow (FreeMF (Push a k)) = Const $ "Push " ++ show a ++ ", " ++ getConst k
-runShow (FreeMF (Pop k)) = Const $ "Pop, " ++ getConst k
+runShow (FreeMF (Pop k))  = Const $ "Pop, " ++ getConst k
 runShow (FreeMF (Top ik)) = Const $ "Top, " ++ getConst (ik 42)
-runShow (FreeMF (Add k)) = Const $ "Add, " ++ getConst k
-runShow (FreeMF (Mul k)) = Const $ "Mul, " ++ getConst k
+runShow (FreeMF (Add k))  = Const $ "Add, " ++ getConst k
+runShow (FreeMF (Mul k))  = Const $ "Mul, " ++ getConst k
+
