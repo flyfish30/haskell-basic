@@ -122,6 +122,19 @@ instance Monoid (Fix (ListF a)) where
   mempty = In NilF
   mappend = (<>)
 
+instance Semigroup (List a) where
+  Nil <> ls2 = ls2
+  ls1 <> Nil = ls1
+  (Cons a ls1) <> ls2 = Cons a (ls1 <> ls2)
+
+instance Monoid (List a) where
+  mempty = Nil
+  mappend = (<>)
+
+lengthAlg :: Alg (ListF a) Int
+lengthAlg NilF = 0
+lengthAlg (ConsF a x) = 1 + x
+
 sumAlgListF :: Alg (ListF Int) Int
 sumAlgListF NilF = 0
 sumAlgListF (ConsF a l) = a + l
