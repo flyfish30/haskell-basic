@@ -94,7 +94,7 @@ simplifyExpr e@(TermI i x) = simplifyTermIExpr i $ simplifyExpr x
 simplifyExpr e@(TermD d x) = simplifyTermDExpr d $ simplifyExpr x
 simplifyExpr e@(Add e1 e2) = simplifyAddExpr (simplifyExpr e1) (simplifyExpr e2)
 simplifyExpr e@(Sub e1 e2) = simplifySubExpr (simplifyExpr e1) (simplifyExpr e2)
-simplifyExpr e@(Mul e1 e2) = Mul (simplifyExpr e1) (simplifyExpr e2)
+simplifyExpr e@(Mul e1 e2) = simplifyMulExpr (simplifyExpr e1) (simplifyExpr e2)
 simplifyExpr e@(Div e1 e2) = simplifyDivExpr (simplifyExpr e1) (simplifyExpr e2)
 
 simplifyTermIExpr :: Int -> Expr Int -> Expr Int
@@ -116,16 +116,25 @@ simplifyAddExpr e1@(TermI a (Var s1)) e2@(TermI b (Var s2))
 simplifyAddExpr e1@(TermD a (Var s1)) e2@(TermD b (Var s2))
   | s1 == s2 = TermD (a + b) (Var s1)
   | otherwise = Add e1 e2
+simplifyAddExpr (LitI i1) (LitI i2) = LitI (i1 + i2)
+simplifyAddExpr (LitD d1) (LitD d2) = LitD (d1 + d1)
 simplifyAddExpr e1 e2 = Add e1 e2
 
 simplifySubExpr :: Expr a -> Expr a -> Expr a
 simplifySubExpr e1@(TermI a (Var s1)) e2@(TermI b (Var s2))
-  | s1 == s2 = TermI (a + b) (Var s1)
+  | s1 == s2 = TermI (a - b) (Var s1)
   | otherwise = Add e1 e2
 simplifySubExpr e1@(TermD a (Var s1)) e2@(TermD b (Var s2))
-  | s1 == s2 = TermD (a + b) (Var s1)
+  | s1 == s2 = TermD (a - b) (Var s1)
   | otherwise = Add e1 e2
+simplifySubExpr (LitI i1) (LitI i2) = LitI (i1 - i2)
+simplifySubExpr (LitD d1) (LitD d2) = LitD (d1 - d2)
 simplifySubExpr e1 e2 = Add e1 e2
+
+simplifyMulExpr :: Expr a -> Expr a -> Expr a
+simplifyMulExpr (LitI i1) (LitI i2) = LitI (i1 - i2)
+simplifyMulExpr (LitD d1) (LitD d2) = LitD (d1 - d2)
+simplifyMulExpr e1 e2 = Mul e1 e2
 
 simplifyDivExpr :: Expr a -> Expr a -> Expr a
 simplifyDivExpr e1@(TermI a (Var s1)) e2@(TermI b (Var s2))
@@ -134,6 +143,8 @@ simplifyDivExpr e1@(TermI a (Var s1)) e2@(TermI b (Var s2))
 simplifyDivExpr e1@(TermD a (Var s1)) e2@(TermD b (Var s2))
   | s1 == s2 = LitD (a / b)
   | otherwise = Div e1 e2
+simplifyDivExpr (LitI i1) (LitI i2) = LitI (i1 - i2)
+simplifyDivExpr (LitD d1) (LitD d2) = LitD (d1 - d2)
 simplifyDivExpr e1 e2 = Add e1 e2
 
 hasSameVar :: Expr a -> Expr a -> Bool
