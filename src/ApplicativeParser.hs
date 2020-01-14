@@ -143,5 +143,5 @@ zeroP = const ZeroE <$> charP 'z'
 
 digitP = predP isDigit
 
-spaceP = charP ' '
+spaceP = many $ charP ' '
 
