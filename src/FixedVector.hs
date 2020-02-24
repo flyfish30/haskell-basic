@@ -5,6 +5,9 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+{-# LANGUAGE NoStarIsType #-}
+{-# OPTIONS_GHC -fplugin GHC.TypeLits.Normalise #-}
+
 module Data.FixedVector where
 
 import Prelude hiding ((++))
