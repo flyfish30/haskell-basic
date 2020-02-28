@@ -12,6 +12,7 @@ module Data.FixedVector where
 
 import Prelude hiding ((++))
 import GHC.TypeLits
+import Data.Type.Equality
 import Data.Kind
 import Data.Proxy
 import Data.Coerce
@@ -121,4 +122,16 @@ withVec :: V.Vector a -> (forall n. KnownNat n => Vec n a -> r) -> r
 withVec v f = case (someNatVal $ fromIntegral $ V.length v) of
   Just (SomeNat (Proxy :: Proxy m)) -> f (UnsafeMkVec @m v)
   Nothing -> f (UnsafeMkVec @0 v)
+
+exactLength :: forall n m a. (KnownNat n, KnownNat m) => Vec n a -> Maybe (Vec m a)
+exactLength vec = case sameNat (Proxy @n) (Proxy @m) of
+  Just Refl -> Just vec
+  Nothing   -> Nothing
+
+zipSame :: V.Vector a -> V.Vector b -> Maybe (V.Vector (a, b))
+zipSame v1 v2 = withVec v1 $ \(v1' :: Vec n a) ->
+                withVec v2 $ \(v2' :: Vec m b) ->
+                case exactLength v1' of
+                  Just v1Same -> Just $ getVector (zipVec v1Same v2')
+                  Nothing     -> Nothing
 
