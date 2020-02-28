@@ -11,7 +11,7 @@
 
 import Prelude   hiding (fst, snd)
 import Data.Kind (Constraint, Type)
-import GHC.TypeLits (Symbol, TypeError, ErrorMessage(..))
+import GHC.TypeLits
 
 ---------------------------------
 -- Defunctionalize function
@@ -122,6 +122,9 @@ type instance Eval (Find p (a ': as)) = Eval (If (Eval (p a))
                                                  (Pure ('Just a))
                                                  (Find p as))
 
+data Uncurry :: (a -> b -> c) -> (a, b) -> Exp c
+type instance Eval (Uncurry f '(a, b)) = f (Eval (Fst '(a, b))) (Eval (Snd '(a, b)))
+
 data ConstFn :: a -> b -> Exp a
 type instance Eval (ConstFn a _b) = a
 
@@ -204,4 +207,50 @@ data Mempty :: a -> Exp a
 type instance Eval (Mempty '()) = '()
 type instance Eval (Mempty (c :: Constraint)) = (() :: Constraint)
 type instance Eval (Mempty (l :: [k])) = ('[] :: [k])
+
+-- * Case spliting
+
+infix 0 -->
+
+data Match j k = Match_ j k
+               | Is_ (j -> Exp Bool) k
+               | Any_ k
+               | Else_ (j -> Exp k)
+
+-- Equivalent of case syntax in term-level
+-- Matching exact value
+-- type BoolToNat = Case
+--   [ 'False --> 0
+--   , 'True  --> 1
+--   ]
+--
+-- Final matches for any value
+-- type NatToBool = Case
+--   [ 0 --> 'False
+--   , Any 'True
+--   ]
+--
+-- Final matches pass value to subcomputation
+-- type ZeroOneOrSucc = Case
+--   [ 0 --> 0
+--   , 1 --> 1
+--   , Else (Pure1 ((+) 1))
+--   ]
+
+data Case :: [Match j k] -> j -> Exp k
+type instance Eval (Case ms a) = Case_ ms a
+
+type family Case_ (ms :: [Match j k]) (a :: j) :: k where
+  Case_ ('Match_ a b ': _)  a = b
+  Case_ ('Match_ _ _ ': ms) a = Case_ ms a
+  Case_ ('Is_ p b    ': ms) a = Case_ [ 'True  --> a
+                                     , 'False --> Case_ ms a
+                                     ] (Eval (p a))
+  Case_ ('Any_ b     ': ms) a = b
+  Case_ ('Else_ f    ': ms) a = Eval (f a) 
+
+type (-->) = 'Match_
+type Is    = 'Is_
+type Any   = 'Any_
+type Else  = 'Else_
 
