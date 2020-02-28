@@ -11,6 +11,7 @@
 
 import Prelude   hiding (fst, snd)
 import Data.Kind (Constraint, Type)
+import GHC.TypeLits (Symbol, TypeError, ErrorMessage(..))
 
 ---------------------------------
 -- Defunctionalize function
@@ -79,6 +80,21 @@ type instance Eval (Or 'True _t)      = 'True
 type instance Eval (Or 'False 'True)  = 'True
 type instance Eval (Or 'False 'False) = 'False
 
+data Not :: Bool -> Exp Bool
+type instance Eval (Not 'True) = 'False
+type instance Eval (Not 'False) = 'True
+
+data Error :: Symbol -> Exp a
+type instance Eval (Error msg) = TypeError ('Text msg)
+
+data TError :: ErrorMessage -> Exp a
+type instance Eval (TError msg) = TypeError msg
+
+
+data If :: Bool -> Exp a -> Exp a -> Exp a
+type instance Eval (If 'True  e1 e2) = Eval e1
+type instance Eval (If 'False e1 e2) = Eval e2
+
 data FromMaybe :: a -> Maybe a -> Exp a
 type instance Eval (FromMaybe _t ('Just a)) = a
 type instance Eval (FromMaybe a  'Nothing)  = a
@@ -100,6 +116,20 @@ data Foldr :: (a -> b -> Exp b) -> b -> [a] -> Exp b
 type instance Eval (Foldr f b '[])       = b
 type instance Eval (Foldr f b (a ': as)) = Eval (f a (Eval (Foldr f b as)))
 
+data Find :: (a -> Exp Bool) -> [a] -> Exp (Maybe a)
+type instance Eval (Find _p '[]) = 'Nothing
+type instance Eval (Find p (a ': as)) = Eval (If (Eval (p a))
+                                                 (Pure ('Just a))
+                                                 (Find p as))
+
+data ConstFn :: a -> b -> Exp a
+type instance Eval (ConstFn a _b) = a
+
+data (<$>) :: (a -> b) -> Exp a -> Exp b
+type instance Eval (f <$> e) = f (Eval e)
+
+data (<*>) :: Exp (a -> b) -> Exp a -> Exp b
+type instance Eval (f <*> e) = Eval f (Eval e)
 
 data Pure :: a -> Exp a
 type instance Eval (Pure a) = a
@@ -107,12 +137,22 @@ type instance Eval (Pure a) = a
 data Pure1 :: (a -> b) -> a -> Exp b
 type instance Eval (Pure1 f a) = f a
 
+data Pure2 :: (a -> b -> c) -> a -> b -> Exp c
+type instance Eval (Pure2 f a b) = f a b
+
 -- type-level as like function application ($)
 infixr 0  =<<
 data (=<<) :: (a -> Exp b)
            -> Exp a
            -> Exp b
 type instance Eval (k =<< e) = Eval (k (Eval e))
+type LiftM = (=<<)
+
+data LiftM2 :: (a -> b -> Exp c)
+            -> Exp a
+            -> Exp b
+            -> Exp c
+type instance Eval (LiftM2 f e1 e2) = Eval (f (Eval e1) (Eval e2))
 
 -- type-level as like function composition (.)
 infixr 0 <=<
@@ -120,6 +160,10 @@ data (<=<) :: (b -> Exp c)
            -> (a -> Exp b)
            -> (a -> Exp c)
 type instance Eval ((g <=< f) a) = Eval (g (Eval (f a)))
+
+-- type-level monad join function
+data Join :: Exp (Exp a) -> Exp a
+type instance Eval (Join e) = Eval (Eval e)
 
 -- Snd2 as like Snd . Snd
 type Snd2 = Snd <=< Snd
