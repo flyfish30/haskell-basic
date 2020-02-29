@@ -8,7 +8,7 @@
 {-# LANGUAGE NoStarIsType #-}
 {-# OPTIONS_GHC -fplugin GHC.TypeLits.Normalise #-}
 
-module Data.FixedVector where
+module FixedVector where
 
 import Prelude hiding ((++))
 import GHC.TypeLits

@@ -9,6 +9,8 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeInType #-}
 
+module FirstClassFamilies where
+
 import Prelude   hiding (fst, snd)
 import Data.Kind (Constraint, Type)
 import GHC.TypeLits

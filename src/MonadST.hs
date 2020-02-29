@@ -1,5 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 
+module MonadST where
+
 import Data.IORef
 import System.IO.Unsafe (unsafePerformIO)
 

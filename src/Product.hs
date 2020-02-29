@@ -1,6 +1,9 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE NoStarIsType #-}
+
+module Product where
 
 -- | Product a b
 type a * b = (a, b)
