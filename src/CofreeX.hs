@@ -5,6 +5,8 @@
 
 module CofreeX () where
 
+import FreeX
+
 class Functor w => Comonad w where
   extract :: w a -> a
   duplicate :: w a -> w (w a)
@@ -90,3 +92,58 @@ unfoldr coalg b = case coalg b of
 
 genNat = unfoldr go 0
   where go b = Just (b, b + 1)
+
+era :: [Int] -> StreamF Int [Int]
+era (p : ns) = SConsF p (filter ((/= 0) . (`mod` p)) ns)
+
+primeStream = ana era [2..]
+
+toListC :: Fix (StreamF e) -> [e]
+toListC (In (SConsF x s)) = x : toListC s
+{-
+toListC = cata alg
+  where alg :: (StreamF e a) -> a
+        alg (SConsF e s) = e : s
+-}
+
+primes = toListC primeStream
+
+class Comonoid w where
+  splitC :: w -> (w, w)
+  destroy :: w -> ()
+
+data Prod e a = Prod e a
+
+instance Functor (Prod e) where
+  fmap f (Prod e a) = Prod e (f a)
+
+instance Comonad (Prod e) where
+  extract (Prod e a) = a
+  duplicate (Prod e a) = Prod e (Prod e a)
+
+fprod (Prod e a) = e + a
+gprod (Prod e a) = e * a
+
+data List a = Nil | ConsL a (List a)
+
+instance Functor List where
+  fmap f Nil = Nil
+  fmap f (ConsL a l) = ConsL (f a) $ fmap f l
+
+instance Applicative List where
+  pure a = ConsL a Nil
+  Nil <*> _ = Nil
+  ConsL f fs <*> as = concatL (fmap f as) (fs <*> as)
+
+instance Monad List where
+  return a = ConsL a Nil
+  Nil >>= f = Nil
+  (ConsL a l) >>= f = concatL (f a) $ l >>= f
+
+join Nil = Nil
+join (ConsL as tls) = concatL as $ join tls
+
+concatL :: List a -> List a -> List a
+concatL Nil rs = rs
+concatL (ConsL a l) rs = ConsL a $ concatL l rs
+

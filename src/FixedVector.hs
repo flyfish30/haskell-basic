@@ -54,9 +54,14 @@ instance KnownNat n => Monad (Vec n) where
   return = replicateVec
   vec >>= f = imapVec (\i x -> f x `indexVec` i) vec
 
+join :: (Vec n (Vec n a)) -> Vec n a
+join vvec = imapVec (\i x -> x `indexVec` i) vvec
+
 instance (KnownNat n, n ~ (1 + m)) => Comonad (Vec n) where
   extract = headVec
   extend f vec = coerce $ V.generate l (f . flip rotateLeftVec vec)
+    where l = fromIntegral $ natVal (Proxy @n)
+  duplicate vec = coerce $ V.generate l (flip rotateLeftVec vec)
     where l = fromIntegral $ natVal (Proxy @n)
 
 headVec :: Vec (1+n) a -> a
