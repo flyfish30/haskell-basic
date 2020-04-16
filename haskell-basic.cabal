@@ -17,11 +17,40 @@ maintainer:          liuchangsheng30@gmail.com
 build-type:          Simple
 extra-source-files:  CHANGELOG.md, README.md
 
+executable hsbasic
+  main-is:             src/Main.hs
+  build-depends:       base >=4.12 && <4.20,
+                       finite-typelits >=0.1 && <0.2,
+                       vector >=0.12 && <0.13,
+                       comonad >=5.0 && <5.1,
+                       ghc-typelits-natnormalise,
+                       JuicyPixels,
+                       haskell-basic
+  default-language:    Haskell2010
+
 library
-  exposed-modules:     Product, ExprSimple, CofreeX, ApplicativeParser, FreeX, OpenUnion, FixedVector, FirstClassFamilies, MonadST
+  exposed-modules:     Product, ExprSimple, CofreeX,
+                       ApplicativeParser, FreeX,
+                       OpenUnion, FixedVector,
+                       FirstClassFamilies, MonadST
+                       ComonadImg
   -- other-modules:
-  other-extensions:    ExistentialQuantification, TypeOperators, TypeSynonymInstances, UndecidableInstances, FlexibleInstances, RankNTypes, DeriveFunctor, TypeInType, GADTs, TypeApplications, DataKinds, KindSignatures, TypeFamilies, ScopedTypeVariables, InstanceSigs, NoStarIsType, MultiParamTypeClasses, FunctionalDependencies, PolyKinds
-  build-depends:       base >=4.12 && <4.13, finite-typelits >=0.1 && <0.2, vector >=0.12 && <0.13, comonad >=5.0 && <5.1, ghc-typelits-natnormalise
+  other-extensions:    ExistentialQuantification,
+                       TypeOperators, TypeSynonymInstances,
+                       UndecidableInstances,
+                       FlexibleInstances,
+                       RankNTypes, DeriveFunctor, TypeInType,
+                       GADTs, TypeApplications, DataKinds,
+                       KindSignatures, TypeFamilies,
+                       ScopedTypeVariables, InstanceSigs,
+                       NoStarIsType, MultiParamTypeClasses,
+                       FunctionalDependencies, PolyKinds
+  build-depends:       base >=4.12 && <4.20,
+                       finite-typelits >=0.1 && <0.2,
+                       vector >=0.12 && <0.13,
+                       comonad >=5.0 && <5.1,
+                       ghc-typelits-natnormalise,
+                       JuicyPixels
   hs-source-dirs:      src
   default-language:    Haskell2010
 

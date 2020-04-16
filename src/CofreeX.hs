@@ -90,3 +90,25 @@ unfoldr coalg b = case coalg b of
 
 genNat = unfoldr go 0
   where go b = Just (b, b + 1)
+
+data Tape a = Tape { tLeft  :: [a]
+                   , tVal   :: a
+                   , tRight :: [a]
+                   }
+shiftLeft :: Tape a -> Tape a
+shiftLeft (Tape ls v (r:rs)) = Tape (v:ls) r rs
+
+shiftLeftN :: Int -> Tape a -> Tape a
+shiftLeftN n t = iterate shiftLeft t !! n
+
+shiftRight :: Tape a -> Tape a
+shiftRight (Tape (l:ls) v rs) = Tape ls l (v:rs)
+
+instance Functor Tape where
+  fmap f (Tape ls v rs) = Tape (fmap f ls) (f v) (fmap f rs)
+
+instance Comonad Tape where
+  extract (Tape ls v rs) = v
+  duplicate t@(Tape ls v rs) = Tape ls' t rs'
+    where (_:ls') = iterate shiftRight t 
+          (_:rs') = iterate shiftLeft t
