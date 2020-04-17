@@ -80,10 +80,10 @@ instance Functor FocusedImage where
   fmap f (FocusedImage bi x y) = FocusedImage (fmap f bi) x y
 
 instance Comonad FocusedImage where
-  extract (FocusedImage bi x y) = (biData bi) V.! (biHeight bi * x + y)
+  extract (FocusedImage bi x y) = (biData bi) V.! (biWidth bi * y + x)
   extend f (FocusedImage bi@(BoxedImage w h _) x y) = FocusedImage
       (BoxedImage w h $ V.generate (w * h) $ \i ->
-          let (x', y') = i `quotRem` w
+          let (y', x') = i `quotRem` w
           in  f (FocusedImage bi x' y'))
       x y
 
