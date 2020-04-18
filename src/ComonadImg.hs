@@ -91,18 +91,25 @@ neighbour :: Int -> Int -> FocusedImage a -> FocusedImage a
 neighbour dx dy (FocusedImage bi x y) = FocusedImage bi x' y'
   where x' = wrap (x + dx) 0 (biWidth bi - 1)
         y' = wrap (y + dy) 0 (biHeight bi - 1)
+        {-# INLINE wrap #-}
         wrap i lo hi
           | i < lo = lo - i
           | i > hi = hi - (i - hi)
           | otherwise = i
 
 median :: Integral a => V.Vector a -> a 
-median v = V.sum v `div` (fromIntegral $ V.length v)
+median v = fromIntegral $ (V.sum . V.map fromIntegral $ v :: Word16)
+                        `div` fromIntegral (5 * 5)
 
-reduceNoise1 :: Integral a => FocusedImage a -> a
-reduceNoise1 fimg@(FocusedImage bi x y) = median $
-    V.generate (nw * nw) $ \i -> extract $ neighbour (nbx i) (nby i) fimg
-  where nw = 3
-        nbx i = (-1) + (i `rem`  nw);
-        nby i = (-1) + (i `quot` nw);
+filterImage :: Integral a => (V.Vector a -> a) -> Int -> FocusedImage a -> a
+filterImage filter kernelW fimg@(FocusedImage bi x y) = filter $
+    V.generate kernelSize $ \i -> extract $ neighbour (nbx i) (nby i) fimg
+  where nbx i = (-1) + (i `rem`  kernelW);
+        nby i = (-1) + (i `quot` kernelW);
+        {-# INLINE kernelSize #-}
+        kernelSize = kernelW * kernelW
+
+{-# INLINE medianImage #-}
+medianImage :: Integral a => FocusedImage a -> a
+medianImage = filterImage median 5
 
