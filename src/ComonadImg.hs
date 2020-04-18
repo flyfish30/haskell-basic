@@ -101,6 +101,17 @@ median :: Integral a => V.Vector a -> a
 median v = fromIntegral $ (V.sum . V.map fromIntegral $ v :: Word16)
                         `div` fromIntegral (5 * 5)
 
+blur :: Integral a => V.Vector a -> a
+blur v = fromIntegral
+       $ (`quot` 16)
+       $ ( nbi 0     + nbi 1 * 2 + nbi 2
+         + nbi 3 * 2 + nbi 4 * 4 + nbi 5 * 2
+         + nbi 6     + nbi 7 * 2 + nbi 8
+         )
+  where {-# INLINE nbi #-}
+        nbi :: Int -> Word16
+        nbi i = fromIntegral $ v V.! i
+
 filterImage :: Integral a => (V.Vector a -> a) -> Int -> FocusedImage a -> a
 filterImage filter kernelW fimg@(FocusedImage bi x y) = filter $
     V.generate kernelSize $ \i -> extract $ neighbour (nbx i) (nby i) fimg
@@ -112,4 +123,24 @@ filterImage filter kernelW fimg@(FocusedImage bi x y) = filter $
 {-# INLINE medianImage #-}
 medianImage :: Integral a => FocusedImage a -> a
 medianImage = filterImage median 5
+
+{-# INLINE blurImage #-}
+blurImage :: Integral a => FocusedImage a -> a
+blurImage = filterImage blur 3
+
+reduceNoise :: Integral a => FocusedImage a -> a
+reduceNoise fimg =
+  let !original   = extract fimg
+      !blurred    = blurImage fimg
+      !edge       = fromIntegral original - fromIntegral blurred :: Int
+      !threshold  = if edge < 7 && edge < (-7) then 0 else edge
+  in fromIntegral $ fromIntegral blurred + threshold
+  -- in fromIntegral threshold
+
+reduceNoise1 :: Integral a => FocusedImage a -> a
+reduceNoise1 fimg =
+  let !original   = extract fimg
+      !medianed   = medianImage fimg
+      !reduced    = reduceNoise fimg
+  in (original `quot` 4) + (medianed `quot` 4) + (reduced `quot` 2)
 
