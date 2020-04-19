@@ -108,7 +108,29 @@ blur v = fromIntegral
          + nbi 6     + nbi 7 * 2 + nbi 8
          )
   where {-# INLINE nbi #-}
-        nbi :: Int -> Word16
+        nbi :: Int -> Int
+        nbi i = fromIntegral $ v V.! i
+
+edge :: Integral a => V.Vector a -> a
+edge v = fromIntegral
+       $ (+ 127)
+       $ ( nbi 0 * (-1) + 0         + nbi 2 * (-1)
+         + 0            + nbi 4 * 4 + 0
+         + nbi 6 * (-1) + 0         + nbi 8 * (-1)
+         )
+  where {-# INLINE nbi #-}
+        nbi :: Int -> Int
+        nbi i = fromIntegral $ v V.! i
+
+eboss :: Integral a => V.Vector a -> a
+eboss v = fromIntegral
+       $ (+ 127)
+       $ ( nbi 0 * 3 `quot` 2 + 0  + 0
+         + 0                  + 0  + 0
+         + 0                  + 0  + nbi 8 * (-3) `div` 2
+         )
+  where {-# INLINE nbi #-}
+        nbi :: Int -> Int
         nbi i = fromIntegral $ v V.! i
 
 filterImage :: Integral a => (V.Vector a -> a) -> Int -> FocusedImage a -> a
@@ -127,12 +149,20 @@ medianImage = filterImage median 5
 blurImage :: Integral a => FocusedImage a -> a
 blurImage = filterImage blur 3
 
+{-# INLINE edgeImage #-}
+edgeImage :: Integral a => FocusedImage a -> a
+edgeImage = filterImage edge 3
+
+{-# INLINE ebossImage #-}
+ebossImage :: Integral a => FocusedImage a -> a
+ebossImage = filterImage eboss 3
+
 reduceNoise :: Integral a => FocusedImage a -> a
 reduceNoise fimg =
   let !original   = extract fimg
       !blurred    = blurImage fimg
-      !edge       = fromIntegral original - fromIntegral blurred :: Int
-      !threshold  = if edge < 7 && edge < (-7) then 0 else edge
+      !edged       = fromIntegral original - fromIntegral blurred :: Int
+      !threshold  = if edged < 7 && edged < (-7) then 0 else edged
   in fromIntegral $ fromIntegral blurred + threshold
   -- in fromIntegral threshold
 
