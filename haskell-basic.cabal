@@ -56,7 +56,7 @@ library
                        ghc-typelits-natnormalise,
                        JuicyPixels
   hs-source-dirs:      src
-  ghc-options:         -fllvm
+  ghc-options:         -O2
   default-language:    Haskell2010
 
 -- test description

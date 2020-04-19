@@ -87,8 +87,8 @@ instance Comonad FocusedImage where
           in  f (FocusedImage bi x' y'))
       x y
 
-neighbour :: Int -> Int -> FocusedImage a -> FocusedImage a
-neighbour dx dy (FocusedImage bi x y) = FocusedImage bi x' y'
+neighbour :: Int -> Int -> FocusedImage a -> a
+neighbour dx dy (FocusedImage bi x y) = (biData bi) V.! (biWidth bi * y' + x')
   where x' = wrap (x + dx) 0 (biWidth bi - 1)
         y' = wrap (y + dy) 0 (biHeight bi - 1)
         {-# INLINE wrap #-}
@@ -135,9 +135,9 @@ eboss v = fromIntegral
 
 filterImage :: Integral a => (V.Vector a -> a) -> Int -> FocusedImage a -> a
 filterImage filter kernelW fimg@(FocusedImage bi x y) = filter $
-    V.generate kernelSize $ \i -> extract $ neighbour (nbx i) (nby i) fimg
-  where nbx i = (-1) + (i `rem`  kernelW);
-        nby i = (-1) + (i `quot` kernelW);
+    V.generate kernelSize $ \i -> neighbour (nbx i) (nby i) fimg
+  where nbx i = (-(kernelW `quot` 2)) + (i `rem`  kernelW);
+        nby i = (-(kernelW `quot` 2)) + (i `quot` kernelW);
         {-# INLINE kernelSize #-}
         kernelSize = kernelW * kernelW
 
