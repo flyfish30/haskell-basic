@@ -98,8 +98,7 @@ neighbour dx dy (FocusedImage bi x y) = FocusedImage bi x' y'
           | otherwise = i
 
 median :: Integral a => V.Vector a -> a 
-median v = fromIntegral $ (V.sum . V.map fromIntegral $ v :: Word16)
-                        `div` fromIntegral (5 * 5)
+median v = fromIntegral $ (sort $ V.toList v) !! (V.length v `quot` 2)
 
 blur :: Integral a => V.Vector a -> a
 blur v = fromIntegral
