@@ -12,6 +12,7 @@ import           Data.List            (sort)
 import           Data.Maybe           (fromMaybe, maybeToList)
 import qualified Data.Vector          as V
 import qualified Data.Vector.Generic  as VG
+import qualified Data.Vector.Algorithms.Merge  as VMerge
 import           Data.Word
 
 class Functor w => Comonad w where
@@ -98,7 +99,7 @@ neighbour dx dy (FocusedImage bi x y) = (biData bi) V.! (biWidth bi * y' + x')
           | otherwise = i
 
 median :: Integral a => V.Vector a -> a 
-median v = fromIntegral $ (sort $ V.toList v) !! (V.length v `quot` 2)
+median v = fromIntegral $ (V.modify VMerge.sort v) V.! (V.length v `quot` 2)
 
 blur :: Integral a => V.Vector a -> a
 blur v = fromIntegral
