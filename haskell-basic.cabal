@@ -37,7 +37,7 @@ library
                        ApplicativeParser, FreeX,
                        OpenUnion, FixedVector,
                        FirstClassFamilies, MonadST
-                       ComonadImg
+                       ComonadImg, SlideWindow
   -- other-modules:
   other-extensions:    ExistentialQuantification,
                        TypeOperators, TypeSynonymInstances,
