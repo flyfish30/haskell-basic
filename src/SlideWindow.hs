@@ -7,8 +7,8 @@ slideWindowSimple n f xs
   | length xs < n = []
   | otherwise     = f (take n xs) : slideWindowSimple n f (tail xs)
 
-slideWindowScanr :: Int -> (a -> b -> b) -> b ->  [a] -> [b]
-slideWindowScanr n f z xs
+slideWindowAccuR :: Int -> (a -> b -> b) -> b ->  [a] -> [b]
+slideWindowAccuR n f z xs
   | length xs < n = []
   | otherwise     = go (drop n xs) $ scanr f z (take n xs)
   where go []     (b:bs) = [b]
@@ -19,11 +19,11 @@ instance Semigroup Int where
 
 instance Monoid Int where
   mempty  = 0
-  mappend = (+)
+  mappend = (<>)
 
-slideWindowMonoid :: Monoid a => Int -> [a] -> [a]
-slideWindowMonoid n xs
+slideWindowSemigrp :: Semigroup a => Int -> [a] -> [a]
+slideWindowSemigrp n xs
   | length xs < n = []
-  | otherwise     = go (drop n xs) $ scanr1 mappend (take n xs)
+  | otherwise     = go (drop n xs) $ scanr1 (<>) (take n xs)
   where go []     (b:bs) = [b]
-        go (t:ts) (b:bs) = b : go ts (map (`mappend` t) (bs ++ [mempty]))
+        go (t:ts) (b:bs) = b : go ts (map (<> t) bs ++ [t])
