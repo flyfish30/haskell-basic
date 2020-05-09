@@ -6,7 +6,7 @@ import SlideWindow
 main :: IO ()
 main = do
   putStrLn "Hello, Haskell!"
-  let count = 1000000
+  let count = 10000000
   -- putStrLn $ show $ last (slideWindowSimple 5 sum (replicate count 20) :: [Int])
   -- putStrLn $ show $ last (slideWindowAccuR 5 (+) 0 (replicate count 20) :: [Int])
   putStrLn $ show $ last (slideWindowSemigrp 5 (replicate count 20) :: [Int])

@@ -1,11 +1,16 @@
 module SlideWindow where
 
-import Data.List
+import           Data.List
+import qualified Data.Vector           as V
+import qualified Data.Vector.Mutable   as MV
 
 slideWindowSimple :: Int -> ([a] -> b) -> [a] -> [b]
 slideWindowSimple n f xs
   | length xs < n = []
-  | otherwise     = f (take n xs) : slideWindowSimple n f (tail xs)
+  | otherwise     = go (length xs) xs
+  where go l ts
+          | l < n     = []
+          | otherwise = f (take n ts) : go (l-1) (tail ts)
 
 slideWindowAccuR :: Int -> (a -> b -> b) -> b ->  [a] -> [b]
 slideWindowAccuR n f z xs
