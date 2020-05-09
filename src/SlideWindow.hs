@@ -1,8 +1,10 @@
+{-# LANGUAGE BlockArguments #-}
+
 module SlideWindow where
 
 import           Data.List
-import qualified Data.Vector           as V
-import qualified Data.Vector.Mutable   as MV
+import qualified Data.Vector.Unboxed           as V
+import qualified Data.Vector.Unboxed.Mutable   as MV
 import           Control.Monad.ST
 
 slideWindowSimple :: Int -> ([a] -> b) -> [a] -> [b]
@@ -34,24 +36,26 @@ slideWindowSemigrp n xs
   where go []     (b:bs) = [b]
         go (t:ts) (b:bs) = b : go ts (map (<> t) bs ++ [t])
 
--- Slide window in vector
+-- Slide window on vector
 --
-slideWindowVSimple :: Int -> (V.Vector a -> b) -> V.Vector a -> V.Vector b
+slideWindowVSimple :: (MV.Unbox a, MV.Unbox b)
+                   => Int -> (V.Vector a -> b) -> V.Vector a -> V.Vector b
 slideWindowVSimple n f vec
-  | length vec < n = V.empty
-  | otherwise      = runST $ do mvec <- (MV.new (length vec - n + 1))
-                                go 0 mvec vec 
+  | V.length vec < n = V.empty
+  | otherwise        = runST $ do mvec <- (MV.new (V.length vec - n + 1))
+                                  go 0 mvec vec
   where go i mvec tvec
           | V.length tvec < n = V.unsafeFreeze mvec
           | otherwise         = do
                               MV.write mvec i $ f (V.take n tvec)
                               go (i+1) mvec (V.tail tvec)
 
-slideWindowVAccuR :: Int -> (a -> b -> b) -> b -> V.Vector a -> V.Vector b
+slideWindowVAccuR :: (MV.Unbox a, MV.Unbox b)
+                  => Int -> (a -> b -> b) -> b -> V.Vector a -> V.Vector b
 slideWindowVAccuR n f z vec
-  | length vec < n = V.empty
-  | otherwise      = runST $ do mvec <- (MV.new (length vec - n + 1))
-                                go 0 mvec (V.drop n vec) (V.scanr f z $ V.take n vec)
+  | V.length vec < n = V.empty
+  | otherwise        = runST $ do mvec <- (MV.new (V.length vec - n + 1))
+                                  go 0 mvec (V.drop n vec) (V.scanr f z $ V.take n vec)
   where go i mvec tvec bvec
           | V.null tvec = do
                         MV.write mvec i b
@@ -62,11 +66,12 @@ slideWindowVAccuR n f z vec
           where (t, ts) = (V.head tvec, V.tail tvec)
                 (b, bs) = (V.head bvec, V.tail bvec)
 
-slideWindowVSemigrp :: Semigroup a => Int -> V.Vector a -> V.Vector a
+slideWindowVSemigrp :: (Semigroup a, MV.Unbox a)
+                    => Int -> V.Vector a -> V.Vector a
 slideWindowVSemigrp n vec
-  | length vec < n = V.empty
-  | otherwise      = runST $ do mvec <- (MV.new (length vec - n + 1))
-                                go 0 mvec (V.drop n vec) (V.scanr1 (<>) $ V.take n vec)
+  | V.length vec < n = V.empty
+  | otherwise        = runST $ do mvec <- (MV.new (V.length vec - n + 1))
+                                  go 0 mvec (V.drop n vec) (V.scanr1 (<>) $ V.take n vec)
   where go i mvec tvec bvec
           | V.null tvec = do
                         MV.write mvec i b
