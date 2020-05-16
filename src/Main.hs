@@ -19,10 +19,13 @@ main = do
   -- putStrLn $ show $ V.last (slideWindowVAccuR 5 (+) 0 $ V.fromList xs :: V.Vector Int)
   -- putStrLn $ show $ V.last (slideWindowVSemigrp 5 $ V.fromList xs :: V.Vector Int)
   -- putStrLn $ show $ V.last (slideWindowVGroup 5 $ V.fromList xs :: V.Vector Int)
-  putStrLn $ show $ V.last (slideWindowVInt 5 $ V.fromList xs :: V.Vector Int)
-  -- img <- readImage "data/yingwuhua.jpg"
+  -- putStrLn $ show $ V.last (slideWindowVInt 5 $ V.fromList xs :: V.Vector Int)
+  img <- readImage "data/yingwuhua.jpg"
   -- writePng "output.png" . unfocus . (=>> medianImage) . focus $ img
-  -- writePng "output.png" . unfocus . (=>> blurImage) . focus $ img
+  writePng "output.png" . unfocus . (=>> blurImage) . focus $ img
   -- writePng "output.png" . unfocus . (=>> edgeImage) . focus $ img
   -- writePng "output.png" . unfocus . (=>> ebossImage) . focus $ img
   -- writePng "output.png" . unfocus . (=>> reduceNoise) . focus $ img
+  -- img <- readUnboxImage "data/yingwuhua.jpg"
+  -- putStrLn . show $ getHistogram img
+  -- writeUnboxPng "output.png" $ blurUbVecImage img
