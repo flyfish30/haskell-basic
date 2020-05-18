@@ -17,6 +17,7 @@ import qualified Data.Vector.Mutable  as MV
 import qualified Data.Vector.Generic  as VG
 import qualified Data.Vector.Algorithms.Merge  as VMerge
 import           Data.Word
+import           Data.Int
 
 import Debug.Trace
 
@@ -98,7 +99,7 @@ instance Comonad FocusedImage where
       x y
 
 neighbour :: Int -> Int -> FocusedImage a -> a
-neighbour dx dy (FocusedImage bi x y) = (biData bi) V.! (biWidth bi * y' + x')
+neighbour !dx !dy (FocusedImage bi x y) = (biData bi) V.! (biWidth bi * y' + x')
   where x' = wrap (x + dx) 0 (biWidth bi - 1)
         y' = wrap (y + dy) 0 (biHeight bi - 1)
         {-# INLINE wrap #-}
@@ -129,7 +130,7 @@ edge v = fromIntegral
          + nbi 6 * (-1) + 0         + nbi 8 * (-1)
          )
   where {-# INLINE nbi #-}
-        nbi :: Int -> Int
+        nbi :: Int -> Int32
         nbi i = fromIntegral $ v V.! i
 
 eboss :: Integral a => V.Vector a -> a
@@ -140,7 +141,7 @@ eboss v = fromIntegral
          + 0                  + 0  + nbi 8 * (-3) `div` 2
          )
   where {-# INLINE nbi #-}
-        nbi :: Int -> Int
+        nbi :: Int -> Int32
         nbi i = fromIntegral $ v V.! i
 
 filterImage :: Integral a => (V.Vector a -> a) -> Int -> FocusedImage a -> a
@@ -240,18 +241,61 @@ getHistogram ubImage = go 0 vec vhist
                                                      (zipVecOnes $ VU.take chunkLen tvec))
           | otherwise = VU.accumulate (+) hist (zipVecOnes $ VU.take (n - i) tvec)
 
-filterUbVecImage :: VU.Unbox a => (V.Vector (VU.Vector a) -> (VU.Vector a))
+filterUbImage :: VU.Unbox a => (VU.Vector a -> a)
                             -> Int
                             -> UnboxedImage a
                             -> UnboxedImage a
-filterUbVecImage filter kernelW ubimg@(UnboxedImage w h ub) = UnboxedImage {
+filterUbImage filter kernelW ubimg@(UnboxedImage w h ub) = UnboxedImage {
+    ubWidth  = w
+  , ubHeight = h
+  , ubData   = VU.generate (w * h) $ \idx -> 
+                   filter $
+                   VU.generate kernelSize $ \i ->
+                       neighbourUb (getxy idx) ((nbx i), (nby i)) ubimg
+  }
+  where nbx i = (-(kernelW `quot` 2)) + (i `rem`  kernelW);
+        nby i = (-(kernelW `quot` 2)) + (i `quot` kernelW);
+        getxy idx = uncurry (flip (,)) $ idx `quotRem` w
+        {-# INLINE kernelSize #-}
+        kernelSize = kernelW * kernelW
+
+neighbourUb :: VU.Unbox a => (Int, Int) -> (Int, Int) -> UnboxedImage a -> a
+neighbourUb (!x, !y) (!dx, !dy) (UnboxedImage w h ub) = ub VU.! (w * y' + x')
+  where x' = wrap (x + dx) 0 (w - 1)
+        y' = wrap (y + dy) 0 (h - 1)
+        {-# INLINE wrap #-}
+        wrap i lo hi
+          | i < lo = lo - i
+          | i > hi = hi - (i - hi)
+          | otherwise = i
+
+blurUb :: (Integral a, VU.Unbox a) => VU.Vector a -> a
+blurUb !vec = fromIntegral
+            $ (`quot` 16)
+            $ ( nbi 0     + nbi 1 * 2 + nbi 2
+              + nbi 3 * 2 + nbi 4 * 4 + nbi 5 * 2
+              + nbi 6     + nbi 7 * 2 + nbi 8
+              )
+  where {-# INLINE nbi #-}
+        nbi :: Int -> Word32
+        nbi i = fromIntegral $ vec VU.! i
+
+{-# INLINE blurUbImage #-}
+blurUbImage :: (VU.Unbox a, Integral a) => UnboxedImage a -> UnboxedImage a
+blurUbImage = filterUbImage blurUb 3
+
+
+filterBatchImage :: VU.Unbox a => (V.Vector (VU.Vector a) -> (VU.Vector a))
+                            -> Int
+                            -> UnboxedImage a
+                            -> UnboxedImage a
+filterBatchImage filter kernelW ubimg@(UnboxedImage w h ub) = UnboxedImage {
     ubWidth  = w
   , ubHeight = h
   , ubData   = V.foldl1 (VU.++) $ V.generate (w' * h) $ \idx -> 
-                    -- trace (show idx) $
-                    filter $
-                    V.generate kernelSize $ \i ->
-                        neighbourUbVec (getBlockxy idx) ((nbx i), (nby i)) ubimg
+                   filter $
+                   V.generate kernelSize $ \i ->
+                       neighbourBatch (getBlockxy idx) ((nbx i), (nby i)) ubimg
   }
   where nbx i = (-(kernelW `quot` 2)) + (i `rem`  kernelW);
         nby i = (-(kernelW `quot` 2)) + (i `quot` kernelW);
@@ -260,9 +304,8 @@ filterUbVecImage filter kernelW ubimg@(UnboxedImage w h ub) = UnboxedImage {
         {-# INLINE kernelSize #-}
         kernelSize = kernelW * kernelW
 
-
-neighbourUbVec :: VU.Unbox a => (Int, Int) -> (Int, Int) -> UnboxedImage a -> VU.Vector a
-neighbourUbVec (blockx, blocky) (dx, dy) (UnboxedImage w h ub)
+neighbourBatch :: VU.Unbox a => (Int, Int) -> (Int, Int) -> UnboxedImage a -> VU.Vector a
+neighbourBatch (!blockx, !blocky) (!dx, !dy) (UnboxedImage w h ub)
   | sx < 0       = VU.reverse (VU.slice woff wlx ub)
                  VU.++ VU.slice off lx ub
   | ex > (w - 1) = VU.slice off lx ub
@@ -301,8 +344,8 @@ instance (Num a, VU.Unbox a) => Num (VU.Vector a) where
 notImplement :: String -> a
 notImplement = error . (++ " is not implemented")
 
-blurUbVec :: (Integral a, VU.Unbox a) => V.Vector (VU.Vector a) -> VU.Vector a
-blurUbVec vvec = VU.map fromIntegral
+blurBatch :: (Integral a, VU.Unbox a) => V.Vector (VU.Vector a) -> VU.Vector a
+blurBatch !vvec = VU.map fromIntegral
                $ VU.map (`quot` 16)
                $ ( nbi 0     + nbi 1 * 2 + nbi 2
                  + nbi 3 * 2 + nbi 4 * 4 + nbi 5 * 2
@@ -312,7 +355,7 @@ blurUbVec vvec = VU.map fromIntegral
         nbi :: Int -> VU.Vector Word32
         nbi i = VU.map fromIntegral $ vvec V.! i
 
-{-# INLINE blurUbVecImage #-}
-blurUbVecImage :: (VU.Unbox a, Integral a) => UnboxedImage a -> UnboxedImage a
-blurUbVecImage = filterUbVecImage blurUbVec 3
+{-# INLINE blurBatchImage #-}
+blurBatchImage :: (VU.Unbox a, Integral a) => UnboxedImage a -> UnboxedImage a
+blurBatchImage = filterBatchImage blurBatch 3
 

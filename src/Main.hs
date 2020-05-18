@@ -28,4 +28,5 @@ main = do
   -- writePng "output.png" . unfocus . (=>> reduceNoise) . focus $ img
   -- img <- readUnboxImage "data/yingwuhua.jpg"
   -- putStrLn . show $ getHistogram img
-  -- writeUnboxPng "output.png" $ blurUbVecImage img
+  -- writeUnboxPng "output.png" $ blurBatchImage img
+  -- writeUnboxPng "output.png" $ blurUbImage img
