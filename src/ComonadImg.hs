@@ -223,7 +223,7 @@ writeUnboxPng filePath = Juicy.writePng filePath . ubImgToJuicy
 chunkLen = 256
 
 {-# INLINE batchW #-}
-batchW = 8
+batchW = 1920
 
 {-# INLINE batchH #-}
 batchH = 1
@@ -314,12 +314,13 @@ neighbourBatch (!blockx, !blocky) (!dx, !dy) (UnboxedImage w h ub)
   where x = blockx * batchW
         y = blocky
         sx = x + dx
-        ex = sx + batchW - 1
+        ex = sx + xbatch - 1
         sy = y + dy
-        ey = sy + batchH - 1
-        lx = batchW - wlx
+        ey = sy + ybatch - 1
+        lx = xbatch - wlx
+        xbatch = if x > w - batchW then w - x else batchW
         (wsx, wlx) = wrapx
-        ly = batchH
+        ybatch = batchH
         off  = wsy * w + max 0 sx
         woff = wsy * w + wsx
         wrapx
