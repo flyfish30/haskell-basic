@@ -13,7 +13,7 @@ import           Data.List            (sort)
 import           Data.Maybe           (fromMaybe, maybeToList)
 import qualified Data.Vector          as V
 import qualified Data.Vector.Unboxed  as VU
-import qualified Data.Vector.Mutable  as MV
+import qualified Data.Vector.Unboxed.Mutable  as MV
 import qualified Data.Vector.Generic  as VG
 import qualified Data.Vector.Algorithms.Merge  as VMerge
 import           Data.Word
@@ -223,11 +223,17 @@ writeUnboxPng filePath = Juicy.writePng filePath . ubImgToJuicy
 chunkLen = 256
 
 {-# INLINE batchW #-}
-batchW = 1920
+batchW = 256
 
 {-# INLINE batchH #-}
 batchH = 1
 
+getHistogram :: UnboxedImage Pixel8 -> VU.Vector Word32
+getHistogram ubImage = VU.modify countBins vhist
+  where countBins !v = VU.mapM_ (incBin v) (ubData ubImage)
+        incBin !v pixel = MV.modify v (+1) (fromIntegral pixel)
+        vhist = VU.replicate (1 + fromIntegral (maxBound :: Pixel8)) 0
+{-
 getHistogram :: UnboxedImage Pixel8 -> VU.Vector Word32
 getHistogram ubImage = go 0 vec vhist
   where n   = VU.length vec
@@ -240,6 +246,7 @@ getHistogram ubImage = go 0 vec vhist
                                   (VU.accumulate (+) hist
                                                      (zipVecOnes $ VU.take chunkLen tvec))
           | otherwise = VU.accumulate (+) hist (zipVecOnes $ VU.take (n - i) tvec)
+-}
 
 filterUbImage :: VU.Unbox a => (VU.Vector a -> a)
                             -> Int
@@ -292,14 +299,23 @@ filterBatchImage :: VU.Unbox a => (V.Vector (VU.Vector a) -> (VU.Vector a))
 filterBatchImage filter kernelW ubimg@(UnboxedImage w h ub) = UnboxedImage {
     ubWidth  = w
   , ubHeight = h
-  , ubData   = V.foldl1 (VU.++) $ V.generate (w' * h) $ \idx -> 
-                   filter $
-                   V.generate kernelSize $ \i ->
-                       neighbourBatch (getBlockxy idx) ((nbx i), (nby i)) ubimg
+  , ubData   = VU.create (do
+                   mv <- MV.new (w * h)
+                   VU.imapM_ (\idx _ ->
+                     VU.imapM_ (\j a -> MV.write mv (getImgOffs idx j) a) $
+                       filter $
+                       V.generate kernelSize $ \i ->
+                           neighbourBatch (getBlockxy idx) ((nbx i), (nby i)) ubimg
+                     )
+                     $ VU.replicate (w' * h) (0::Int8)
+                   return mv
+                   )
   }
   where nbx i = (-(kernelW `quot` 2)) + (i `rem`  kernelW);
         nby i = (-(kernelW `quot` 2)) + (i `quot` kernelW);
         w' = (w + batchW - 1) `quot` batchW
+        getImgOffs i j = let (row, col) = i `quotRem` w'
+                         in row * w + col * batchW + j
         getBlockxy idx = uncurry (flip (,)) $ idx `quotRem` w'
         {-# INLINE kernelSize #-}
         kernelSize = kernelW * kernelW
