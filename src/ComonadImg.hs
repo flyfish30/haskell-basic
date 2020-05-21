@@ -100,8 +100,8 @@ instance Comonad FocusedImage where
 
 neighbour :: Int -> Int -> FocusedImage a -> a
 neighbour !dx !dy (FocusedImage bi x y) = (biData bi) V.! (biWidth bi * y' + x')
-  where x' = wrap (x + dx) 0 (biWidth bi - 1)
-        y' = wrap (y + dy) 0 (biHeight bi - 1)
+  where !x' = wrap (x + dx) 0 (biWidth bi - 1)
+        !y' = wrap (y + dy) 0 (biHeight bi - 1)
         {-# INLINE wrap #-}
         wrap i lo hi
           | i < lo = lo - i
@@ -261,8 +261,8 @@ filterUbImage filter kernelW ubimg@(UnboxedImage w h ub) = UnboxedImage {
 
 neighbourUb :: VU.Unbox a => (Int, Int) -> (Int, Int) -> UnboxedImage a -> a
 neighbourUb (!x, !y) (!dx, !dy) (UnboxedImage w h ub) = ub VU.! (w * y' + x')
-  where x' = wrap (x + dx) 0 (w - 1)
-        y' = wrap (y + dy) 0 (h - 1)
+  where !x' = wrap (x + dx) 0 (w - 1)
+        !y' = wrap (y + dy) 0 (h - 1)
         {-# INLINE wrap #-}
         wrap i lo hi
           | i < lo = lo - i
@@ -311,23 +311,23 @@ neighbourBatch (!blockx, !blocky) (!dx, !dy) (UnboxedImage w h ub)
   | ex > (w - 1) = VU.slice off lx ub
                  VU.++ VU.reverse (VU.slice woff wlx ub)
   | otherwise    = VU.slice off lx ub
-  where x = blockx * batchW
-        y = blocky
-        sx = x + dx
-        ex = sx + xbatch - 1
-        sy = y + dy
-        ey = sy + ybatch - 1
-        lx = xbatch - wlx
-        xbatch = if x > w - batchW then w - x else batchW
-        (wsx, wlx) = wrapx
-        ybatch = batchH
-        off  = wsy * w + max 0 sx
-        woff = wsy * w + wsx
+  where !x = blockx * batchW
+        !y = blocky
+        !sx = x + dx
+        !ex = sx + xbatch - 1
+        !sy = y + dy
+        !ey = sy + ybatch - 1
+        !lx = xbatch - wlx
+        !xbatch = if x > w - batchW then w - x else batchW
+        !ybatch = batchH
+        !off  = wsy * w + max 0 sx
+        !woff = wsy * w + wsx
+        !(wsx, wlx) = wrapx
         wrapx
           | sx < 0       = (1, 0 - sx)
           | ex > (w - 1) = (w - 1 - (ex - (w - 1)), (ex - (w - 1)))
           | otherwise    = (sx, 0)
-        (wsy, wly) = wrapy
+        !(wsy, wly) = wrapy
         wrapy
           | sy < 0       = (0 - sy, 0 - sy)
           | ey > (h - 1) = (h - 1 - (ey - (h - 1)), (ey - (h - 1)))
