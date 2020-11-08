@@ -140,3 +140,5 @@ zipSame v1 v2 = withVec v1 $ \(v1' :: Vec n a) ->
                   Just v1Same -> Just $ getVector (zipVec v1Same v2')
                   Nothing     -> Nothing
 
+vec2x3Int :: Maybe (Vec (2*3) Int)
+vec2x3Int = mkVec (V.fromList [1..7])
