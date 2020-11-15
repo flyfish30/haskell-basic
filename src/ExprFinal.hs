@@ -4,14 +4,18 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module ExprFinal where
 
 import Prelude       hiding (and, or)
 import Data.Char
+import Data.Function
 import Data.List
 import Data.Proxy
 import GHC.TypeLits
+
+import Control.Applicative
 
 data Expr env t where
   LitB :: Bool -> Expr env Bool
@@ -82,32 +86,37 @@ type Term a = forall r h. Language r => r h a
 interpret :: Term a -> a
 interpret t = run t ()
 
-newtype RunR h a = RunR { unR :: h -> a }
+newtype Prg h a = Prg { run :: h -> a } deriving Functor
 
-instance Language RunR where
-  here      = RunR $ \(a, _) -> a
-  before v  = RunR $ \(_, h) -> unR v h
-  lambda e  = RunR $ \h a -> unR e (a, h)
-  apply f e = RunR $ \h -> unR f h $ unR e h
+instance Applicative (Prg h) where
+  pure = Prg . const
+  Prg f <*> Prg e = Prg $ \h -> f h $ e h
 
-  loop f = let fixed = apply f (loop f) in fixed
+instance Language Prg where
+  here     = Prg $ \(a, _) -> a
+  before v = Prg $ \(_, h) -> run v h
+  lambda e = Prg $ \h a -> run e (a, h)
+  apply    = (<*>)
 
-  int  i     = RunR $ const i
-  add  e1 e2 = RunR $ \h -> unR e1 h + unR e2 h
-  mult e1 e2 = RunR $ \h -> unR e1 h * unR e2 h
-  down x     = RunR $ \h -> unR x h - 1
-  up   x     = RunR $ \h -> unR x h + 1
-  gte  x  y  = RunR $ \h -> unR x h >= unR y h
+  loop = liftA fix
 
-  bool b     = RunR $ const b
-  or   b1 b2 = RunR $ \h -> unR b1 h || unR b2 h
-  and  b1 b2 = RunR $ \h -> unR b1 h && unR b2 h
-  neg  b     = RunR $ \h -> not $ unR b h
+  int  = pure
+  add  = liftA2 (+)
+  mult = liftA2 (*)
+  down = liftA (subtract 1)
+  up   = liftA (+ 1)
+  gte  = liftA2 (>=)
 
-  ifte p e1 e2 = RunR $ \h -> if (unR p h) then (unR e1 h) else (unR e2 h)
+  bool = pure
+  or   = liftA2 (||)
+  and  = liftA2 (&&)
+  neg  = liftA not
 
-run :: Term a -> env -> a
-run = unR
+  ifte = liftA3 iff
+
+iff :: Bool -> a -> a -> a
+iff True  e1 e2 = e1
+iff False e1 e2 = e2
 
 fact :: Term (Int -> Int)
 fact = let eq0 :: Term (Int -> Bool)
