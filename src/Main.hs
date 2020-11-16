@@ -4,6 +4,7 @@ import qualified Data.Vector.Unboxed       as V
 
 import           ComonadImg
 import           SlideWindow
+import           DiagramsGraph
 
 main :: IO ()
 main = do
@@ -30,3 +31,4 @@ main = do
   -- putStrLn . show $ getHistogram img
   -- writeUnboxPng "output.png" $ blurBatchImage img
   -- writeUnboxPng "output.png" $ blurUbImage img
+  -- drawExampleGraph

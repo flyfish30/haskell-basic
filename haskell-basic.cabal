@@ -36,8 +36,9 @@ library
   exposed-modules:     Product, ExprSimple, CofreeX,
                        ApplicativeParser, FreeX,
                        OpenUnion, FixedVector,
-                       FirstClassFamilies, MonadST
-                       ComonadImg, SlideWindow
+                       FirstClassFamilies, MonadST,
+                       ComonadImg, SlideWindow,
+                       DiagramsGraph
   -- other-modules:
   other-extensions:    ExistentialQuantification,
                        TypeOperators, TypeSynonymInstances,
@@ -55,6 +56,8 @@ library
                        vector-algorithms >=0.8 && <0.10,
                        comonad >=5.0 && <5.1,
                        groups,
+                       diagrams-lib, diagrams-svg,
+                       SVGFonts,
                        ghc-typelits-natnormalise,
                        JuicyPixels
   hs-source-dirs:      src
