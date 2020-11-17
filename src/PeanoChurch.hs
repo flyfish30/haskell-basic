@@ -78,14 +78,15 @@ data Peano = O | S Peano deriving (Show, Eq, Ord)
 instance Nat Peano where
   zero      = O
   successor = S
-  nat  z s O  = z
-  nat  z s pn = s pn
-  iter z step O = z
+  nat  z s O      = z
+  nat  z s (S pn) = s pn
+  iter z step O      = z
   iter z step (S pn) = step $ iter z step pn
 
   plus  m n = iter m successor n
-  minus O n = n
-  minus m n = iter m predPeano n
+  minus m n
+    | m > n = iter m predPeano n
+    | otherwise = 0
   mult  O n = 0
   mult  m n = iter 0 (plus m) n
   pow   O n = 1
@@ -112,14 +113,15 @@ predPeano (S pn) = pn
 instance Nat [()] where
   zero      = []
   successor = (() :)
-  nat z s [] = z
-  nat z s xs = s xs
-  iter z step [] = z
+  nat z s []     = z
+  nat z s (_:xs) = s xs
+  iter z step []     = z
   iter z step (_:xs) = step $ iter z step xs
 
   plus  m  n = iter m successor n
-  minus [] n = n
-  minus m  n = iter m predList n
+  minus m  n
+    | m > n  = iter m predList n
+    | otherwise = 0
   mult  [] n = 0
   mult  m  n = iter 0 (plus m) n
   pow   [] n = 1
@@ -144,6 +146,12 @@ instance Nat Scott where
   mult = substR (liftISO2 isoP) mult
   pow = substR (liftISO2 isoP) pow
 
+  zero = Scott $ \z s -> z
+  successor n = Scott $ \z s -> s n
+  nat z s 0 = z
+  nat z s n = runScott n z $ \n' -> s n'
+  iter z step n = runScott n z (\scott -> step $ iter z step scott)
+
 -- Or from induction!
 newtype Church = Church { runChurch :: forall a. (a -> a) -> a -> a }
 instance Nat Church where
@@ -155,14 +163,13 @@ instance Nat Church where
   zero        = Church $ const id
   successor n = Church $ \f -> f . (runChurch n f)
   nat z s 0   = z
-  nat z s n   = s n
+  nat z s n   = s $ predChurch n
   iter z step n = runChurch n step z
 
   plus  m n = Church $ \f -> (runChurch n f) . (runChurch m f)
   minus m n
-    | m == n = 0
     | m > n = runChurch n predChurch m
-    | otherwise = runChurch n predChurch m
+    | otherwise = 0
   mult  0 n = 0
   mult  m n = Church $ runChurch n . runChurch m
   pow   m n = Church $ runChurch n $ runChurch m
