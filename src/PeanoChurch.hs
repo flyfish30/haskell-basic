@@ -8,6 +8,7 @@
 module PeanoChurch where
 
 import Data.List
+import Data.Profunctor
 
 type ISO a b = (a -> b, b -> a)
 -- See https://www.codewars.com/kata/isomorphism
@@ -22,11 +23,10 @@ substR :: ISO a b -> (b -> a)
 substR = snd
 
 liftISO :: ISO a b -> ISO (a -> a) (b -> b)
-liftISO (ab, ba) = (\aa -> ab . aa . ba, \bb -> ba . bb . ab)
+liftISO (ab, ba) = (dimap ba ab, dimap ab ba)
  
 liftISO2 :: ISO a b -> ISO (a -> a -> a) (b -> b -> b)
-liftISO2 iso@(ab, ba) = ( \aaa -> (fst (liftISO iso)) . aaa . ba
-                        , \bbb -> (snd (liftISO iso)) . bbb . ab)
+liftISO2 (ab, ba) = (dimap ba (dimap ba ab), dimap ab (dimap ab ba))
 
 -- A Natural Number is either Zero,
 -- or a Successor (1 +) of Natural Number.
@@ -148,9 +148,8 @@ instance Nat Scott where
 
   zero = Scott $ \z s -> z
   successor n = Scott $ \z s -> s n
-  nat z s 0 = z
-  nat z s n = runScott n z $ \n' -> s n'
-  iter z step n = runScott n z (\scott -> step $ iter z step scott)
+  nat z s n = runScott n z s
+  iter z step n = runScott n z (step . iter z step)
 
 -- Or from induction!
 newtype Church = Church { runChurch :: forall a. (a -> a) -> a -> a }
@@ -162,8 +161,7 @@ instance Nat Church where
   -- exp should not use mult.
   zero        = Church $ const id
   successor n = Church $ \f -> f . (runChurch n f)
-  nat z s 0   = z
-  nat z s n   = s $ predChurch n
+  nat z s n   = runChurch n (const $ s (predChurch n)) z
   iter z step n = runChurch n step z
 
   plus  m n = Church $ \f -> (runChurch n f) . (runChurch m f)
