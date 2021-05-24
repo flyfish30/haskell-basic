@@ -33,7 +33,7 @@ executable hsbasic
   default-language:    Haskell2010
 
 library
-  exposed-modules:     Product, ExprSimple, CofreeX,
+  exposed-modules:     FunctorAlg, ExprSimple, CofreeX,
                        ApplicativeParser, FreeX,
                        OpenUnion, FixedVector,
                        FirstClassFamilies, MonadST,
