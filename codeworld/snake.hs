@@ -18,13 +18,13 @@ data GameState = GameIdle
                deriving(Show, Eq)
 
 data World = World {
-    rnds  :: [RandomNumber],
-    state :: GameState,
-    snake :: Snake,
-    snakeM :: Snake,
-    apple :: Apple,
-    arenaWidth :: Double,
-    arenaHeight :: Double
+      rnds  :: [RandomNumber]
+    , state :: GameState
+    , snake :: Snake
+    , snakeM :: Snake
+    , apple :: Apple
+    , arenaWidth :: Double
+    , arenaHeight :: Double
     }
 
 initialWorld :: StdGen -> World
@@ -72,14 +72,14 @@ handleEvent (TimePassing dt) w
 handleEvent (KeyPress keyText) w
   | state w == GameOver
     && unpack keyText == "Enter" = restartWorld (rnds w) arenaW arenaH
-  | unpack keyText == "Up"    = w {snake = turnSnake DirectUp snake'}
-  | unpack keyText == "Down"  = w {snake = turnSnake DirectDown snake'}  
-  | unpack keyText == "Left"  = w {snake = turnSnake DirectLeft snake'}
-  | unpack keyText == "Right" = w {snake = turnSnake DirectRight snake'}
-  | unpack keyText == "W"  = w {snakeM = turnSnake DirectUp snakeM'}
-  | unpack keyText == "S"  = w {snakeM = turnSnake DirectDown snakeM'}  
-  | unpack keyText == "A"  = w {snakeM = turnSnake DirectLeft snakeM'}
-  | unpack keyText == "D"  = w {snakeM = turnSnake DirectRight snakeM'}
+  | unpack keyText == "Up"    = w { snake = turnSnake DirectUp snake' }
+  | unpack keyText == "Down"  = w { snake = turnSnake DirectDown snake' }
+  | unpack keyText == "Left"  = w { snake = turnSnake DirectLeft snake' }
+  | unpack keyText == "Right" = w { snake = turnSnake DirectRight snake' }
+  | unpack keyText == "W"  = w { snakeM = turnSnake DirectUp snakeM' }
+  | unpack keyText == "S"  = w { snakeM = turnSnake DirectDown snakeM' }
+  | unpack keyText == "A"  = w { snakeM = turnSnake DirectLeft snakeM' }
+  | unpack keyText == "D"  = w { snakeM = turnSnake DirectRight snakeM' }
   | otherwise = w
     where snake' = snake w
           snakeM' = snakeM w
@@ -88,21 +88,21 @@ handleEvent (KeyPress keyText) w
 handleEvent _ w = w
 
 handleSnakeAction snake' action w
-  | action == SnakeMove = w {snake = moveSnake snake'}
-  | action == SnakeEat  = w {snake = eatingSnake snake',
-                             apple = apple',
-                             rnds  = rnds'}
-  | action == SnakeNoAct = w {snake = snake'}
-  | action == SnakeDead  = w {state = GameOver}
+  | action == SnakeMove = w { snake = moveSnake snake' }
+  | action == SnakeEat  = w { snake = eatingSnake snake'
+                            , apple = apple'
+                            , rnds  = rnds' }
+  | action == SnakeNoAct = w { snake = snake' }
+  | action == SnakeDead  = w { state = GameOver }
     where (apple', rnds') = randomApple w
 
 handleSnakeMAction snake' action w
-  | action == SnakeMove = w {snakeM = moveSnake snake'}
-  | action == SnakeEat  = w {snakeM = eatingSnake snake',
-                             apple = apple',
-                             rnds  = rnds'}
-  | action == SnakeNoAct = w {snakeM = snake'}
-  | action == SnakeDead  = w {state = GameOver}
+  | action == SnakeMove = w { snakeM = moveSnake snake' }
+  | action == SnakeEat  = w { snakeM = eatingSnake snake'
+                            , apple = apple'
+                            , rnds  = rnds' }
+  | action == SnakeNoAct = w { snakeM = snake' }
+  | action == SnakeDead  = w { state = GameOver }
     where (apple', rnds') = randomApple w
 
 -- Check the selected snake if it should be move or collision some things.
@@ -112,8 +112,8 @@ handleSnakeMAction snake' action w
 checkSnakeAction :: Double -> World -> Snake
                  -> (Snake, SnakeAction)
 checkSnakeAction dt world snakeS
-    = if ds' > snkW then (snakeS{ds = 0}, action)
-                    else (snakeS{ds = ds'}, action1)
+    = if ds' > snkW then (snakeS{ ds = 0 }, action)
+                    else (snakeS{ ds = ds' }, action1)
     where ds' = ds snakeS + dt * snakeSpeed
           snkW  = width snakeS
           headOrg = head $ bodyPoints snakeS
@@ -138,9 +138,9 @@ checkSnakeAction dt world snakeS
           maxH = arenaHeight world / 2
           
 data Apple = Apple {
-    position :: Point,
-    colorA   :: Color,
-    widthA   :: Double
+      position :: Point
+    , colorA   :: Color
+    , widthA   :: Double
     }
 
 mkApple :: Point -> Color -> Apple
@@ -172,12 +172,12 @@ data SnakeAction = SnakeNoAct
                  deriving(Show, Eq)
 
 data Snake = Snake {
-    bodyPoints :: [Point],
-    ds     :: Double,     -- acceleration distance by passing time
-    score  :: Int,
-    direct :: Direction,
-    color  :: Color,
-    width  :: Double
+      bodyPoints :: [Point]
+    , ds     :: Double     -- acceleration distance by passing time
+    , score  :: Int
+    , direct :: Direction
+    , color  :: Color
+    , width  :: Double
     }
     
 snakeSpeed = 2
@@ -212,14 +212,14 @@ turnSnake dir snake = if isConflictDirect dir (direct snake)
             | otherwise = False
 
 moveSnake :: Snake -> Snake
-moveSnake snake = snake {ds = 0, bodyPoints = pts}
+moveSnake snake = snake { ds = 0, bodyPoints = pts }
     where ptsOrg = bodyPoints snake
           pts = pt : init ptsOrg
           pt = translatedPoint dx dy $ head ptsOrg
           (dx, dy) = getSnakeDxDy snake
 
 eatingSnake :: Snake -> Snake
-eatingSnake snake = snake {ds = 0, score = score', bodyPoints = pts}
+eatingSnake snake = snake { ds = 0, score = score', bodyPoints = pts }
     where ptsOrg = bodyPoints snake
           pts = pt : ptsOrg
           pt = translatedPoint dx dy $ head ptsOrg
