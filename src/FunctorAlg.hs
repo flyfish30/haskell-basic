@@ -1,6 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NoStarIsType #-}
 
@@ -61,7 +62,7 @@ instance Functor (Const mo) where
   fmap _ (Const mo) = Const mo
 
 instance Monoid mo => Applicative (Const mo) where
-  pure = Const mempty
+  pure x = Const mempty
   Const mf <*> Const mo = Const (mf <> mo)
 
 -- | Definition Natural and natural constructs
