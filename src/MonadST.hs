@@ -15,7 +15,6 @@ instance Applicative (ST s) where
   ST f <*> ST a = seq f . seq a . ST $ f a
 
 instance Monad (ST s) where
-  return = ST
   ST a >>= f = seq a $ f a
 
 newtype STRef s a = STRef { unSTRef :: IORef a }

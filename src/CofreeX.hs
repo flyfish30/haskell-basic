@@ -136,7 +136,6 @@ instance Applicative List where
   ConsL f fs <*> as = concatL (fmap f as) (fs <*> as)
 
 instance Monad List where
-  return a = ConsL a Nil
   Nil >>= f = Nil
   (ConsL a l) >>= f = concatL (f a) $ l >>= f
 

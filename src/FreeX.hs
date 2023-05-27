@@ -65,7 +65,6 @@ instance Functor f => Applicative (Free f) where
   (Free ffrg) <*> x = Free (fmap (<*> x) ffrg)
 
 instance Functor f => Monad (Free f) where
-  return = Pure
   (Pure a)    >>= k = k a
   (Free ffra) >>= k = Free (fmap (>>= k) ffra)
 
@@ -86,7 +85,7 @@ freeMap phi (Pure a)    = Pure a
 freeMap phi (Free ffra) = Free (phi (fmap (freeMap phi) ffra))
 
 monad :: Monad m => Free m :~> m
-monad (Pure a) = return a
+monad (Pure a) = pure a
 monad (Free mfr) = mfr >>= monad
 -- monad (Free mfr) = join (fmap monad mfr)
 
@@ -214,7 +213,7 @@ instance Functor f => HFunctor (FreeMF f) where
 type FreeMonad f = HFix (FreeMF f)
 
 algMonad :: Monad m => HAlg (FreeMF m) m
-algMonad (PureMF a)   = return a
+algMonad (PureMF a)   = pure a
 algMonad (FreeMF fga) = join fga
 
 class Functor m => Monad' m where
@@ -225,8 +224,8 @@ instance Monad' Maybe where
   monad' (Free Nothing) = Nothing
   monad' (Free (Just frm)) = monad' frm
 
-return' :: Monad' m => a -> m a
-return' = monad' . Pure
+pure' :: Monad' m => a -> m a
+pure' = monad' . Pure
 
 join' :: Monad' m => m (m a) -> m a
 join' = monad' . Free . fmap (Free . fmap Pure)
@@ -246,7 +245,6 @@ instance Functor f => Applicative (HFix (FreeMF f)) where
   (InH (FreeMF frf)) <*> fixmf = InH . FreeMF $ fmap (<*> fixmf) frf
 
 instance Functor f => Monad (HFix (FreeMF f)) where
-  return = InH . PureMF
   (InH (PureMF a))   >>= k = k a
   (InH (FreeMF fga)) >>= k = InH . FreeMF $ fmap (>>= k) fga
 
@@ -263,7 +261,6 @@ instance Monoid w => Applicative (Writer w) where
   (Writer (f, w)) <*> (Writer (a, w1)) = Writer (f a, w `mappend` w1)
 
 instance Monoid w => Monad (Writer w) where
-  return a = Writer (a, mempty)
   (Writer (a, w)) >>= k = Writer $ let (a1, w1) = runWriter (k a)
                                    in (a1, w `mappend` w1)
 
@@ -291,7 +288,6 @@ instance Applicative (State s) where
                                    in  (f a, s2)
 
 instance Monad (State s) where
-  return a    = State $ \s -> (a, s)
   state >>= k = State $ \s -> let (a1, s1) = runState state s
                               in  runState (k a1) s1
 
@@ -323,7 +319,7 @@ calc = do
   mul
   x <- top
   pop
-  return x
+  pure x
 
 type MemState = State [Int]
 

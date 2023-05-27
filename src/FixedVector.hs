@@ -41,7 +41,6 @@ instance (KnownNat n, Semigroup a) => Semigroup (Vec n a) where
 
 instance (KnownNat n, Monoid a) => Monoid (Vec n a) where
   mempty = replicateVec mempty
-  mappend = zipWithVec mappend
 
 instance Functor (Vec n) where
   fmap = mapVec
@@ -51,7 +50,6 @@ instance KnownNat n => Applicative (Vec n) where
   (<*>)  = zipWithVec ($)
 
 instance KnownNat n => Monad (Vec n) where
-  return = replicateVec
   vec >>= f = imapVec (\i x -> f x `indexVec` i) vec
 
 join :: (Vec n (Vec n a)) -> Vec n a
@@ -63,6 +61,15 @@ instance (KnownNat n, n ~ (1 + m)) => Comonad (Vec n) where
     where l = fromIntegral $ natVal (Proxy @n)
   duplicate vec = coerce $ V.generate l (flip rotateLeftVec vec)
     where l = fromIntegral $ natVal (Proxy @n)
+
+instance (KnownNat n, Num a) => Num (Vec n a) where
+  v1 + v2 = (+) <$> v1 <*> v2
+  v1 - v2 = (-) <$> v1 <*> v2
+  v1 * v2 = (*) <$> v1 <*> v2
+  negate = fmap negate
+  abs = fmap abs
+  signum = fmap signum
+  fromInteger = replicateVec . fromInteger
 
 headVec :: Vec (1+n) a -> a
 headVec vec = V.head $ getVector vec
@@ -109,8 +116,13 @@ splitVec vec = (UnsafeMkVec xs, UnsafeMkVec ys)
   where l = fromIntegral $ natVal (Proxy @n)
         (xs, ys) = V.splitAt l (getVector vec)
 
-zipWithVec :: (a -> b -> c) -> Vec n a -> Vec m b -> Vec n1 c
+-- | zip two same length fixed vectory
+zipWithVec :: (a -> b -> c) -> Vec n a -> Vec n b -> Vec n c
 zipWithVec f u v = UnsafeMkVec $ V.zipWith f (getVector u) (getVector v)
+
+-- | zip two difference length fixed vectory
+zipWithVecUnalign :: (a -> b -> c) -> Vec n a -> Vec m b -> Vec n1 c
+zipWithVecUnalign f u v = UnsafeMkVec $ V.zipWith f (getVector u) (getVector v)
 
 replicateVec :: forall n a. KnownNat n => a -> Vec n a
 replicateVec a = UnsafeMkVec $ V.replicate l a
