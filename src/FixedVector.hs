@@ -163,6 +163,13 @@ zipSame v1 v2 = withVec v1 $ \(v1' :: Vec n a) ->
                   Just v1Same -> Just $ getVector (zipVec v1Same v2')
                   Nothing     -> Nothing
 
+zipSameWith :: (a -> b -> c) -> V.Vector a -> V.Vector b -> Maybe (V.Vector c)
+zipSameWith f v1 v2 = withVec v1 $ \(v1' :: Vec n a) ->
+                      withVec v2 $ \(v2' :: Vec m b) ->
+                      case exactLength v1' of
+                        Just v1Same -> Just $ getVector (zipWithVec f v1Same v2')
+                        Nothing     -> Nothing
+
 type SimdLane :: Type
 data SimdLane where
   SimdLaneN :: Nat -> SimdLane
