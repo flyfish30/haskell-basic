@@ -220,7 +220,7 @@ type family TypeToSelem (a::Type) :: SimdElem where
 
 newtype SimdVec l e = MkSimdVec { simdVector :: Vec (SlaneToNat l) (SelemToType e) }
 
-mapSimdVec f (MkSimdVec v1) (MkSimdVec v2) = MkSimdVec $ f v1 v2
+zipWithSimdVec f (MkSimdVec v1) (MkSimdVec v2) = MkSimdVec $ f v1 v2
 
 -- | deriving Show typeclass
 deriving instance Show (SimdVec l (SimdIntN 8))
@@ -238,14 +238,15 @@ deriving instance Show (SimdVec l (SimdFloatN 64))
 
 -- | deriving Num typeclass
 -- deriving instance KnownNat l => Num (SimdVec (SimdLaneN l) (SimdIntN e))
-instance (KnownNat l, KnownNat n) => Num (SimdVec (SimdLaneN l) (SimdIntN n)) where
+instance    (KnownNat l, KnownNat n, Num (SelemToType (SimdIntN n)))
+         => Num (SimdVec (SimdLaneN l) (SimdIntN n)) where
   (+) = simdIntAdd
   (-) = simdIntSub
   (*) = simdIntMul
-  negate = undefined
-  abs = undefined
-  signum = undefined
-  fromInteger = undefined
+  negate (MkSimdVec v) = MkSimdVec $ negate v
+  abs    (MkSimdVec v) = MkSimdVec $ abs v
+  signum (MkSimdVec v) = MkSimdVec $ signum v
+  fromInteger = MkSimdVec . fromInteger
 
 castSimdVec :: (KnownNat dl, KnownNat dn)
             => SimdVec (SimdLaneN l) (SimdIntN n)
@@ -266,12 +267,12 @@ isInt16x8NormOp :: (KnownNat l1, KnownNat n1, KnownNat l2, KnownNat n2)
 isInt16x8NormOp v1 v2 = typeOf v1 == typeRep (Proxy @(SimdVec (SimdLaneN 8) (SimdIntN 16)))
                       && typeOf v2 == typeRep (Proxy @(SimdVec (SimdLaneN 8) (SimdIntN 16)))
 
-isInt8x16WideOp :: (KnownNat l1, KnownNat n1, KnownNat l2, KnownNat n2)
+isInt8x8WideOp :: (KnownNat l1, KnownNat n1, KnownNat l2, KnownNat n2)
                 => SimdVec (SimdLaneN l1) (SimdIntN n1)
                 -> SimdVec (SimdLaneN l2) (SimdIntN n2)
                 -> Bool
-isInt8x16WideOp v1 v2 = typeOf v1 == typeRep (Proxy @(SimdVec (SimdLaneN 8) (SimdIntN 16)))
-                      && typeOf v2 == typeRep (Proxy @(SimdVec (SimdLaneN 16) (SimdIntN 8)))
+isInt8x8WideOp v1 v2 = typeOf v1 == typeRep (Proxy @(SimdVec (SimdLaneN 8) (SimdIntN 16)))
+                      && typeOf v2 == typeRep (Proxy @(SimdVec (SimdLaneN 8) (SimdIntN 8)))
 
 simdIntAdd :: (KnownNat l1, KnownNat n1, KnownNat l2, KnownNat n2)
            => SimdVec (SimdLaneN l1) (SimdIntN n1)
@@ -284,9 +285,9 @@ simdIntAdd v1 v2
   | isInt16x8NormOp v1 v2 = unsafeCoerce
                           $ simdAddInt16x8 (castSimdVec @8 @16 v1)
                                            (castSimdVec @8 @16 v2)
-  | isInt8x16WideOp v1 v2 = unsafeCoerce
-                          $ simdAddwInt8x16 (castSimdVec @8 @16 v1)
-                                            (castSimdVec @16 @8 v2)
+  | isInt8x8WideOp v1 v2 = unsafeCoerce
+                          $ simdAddwInt8x8 (castSimdVec @8 @16 v1)
+                                            (castSimdVec @8 @8 v2)
 
 
 simdIntSub :: (KnownNat l1, KnownNat n1, KnownNat l2, KnownNat n2)
@@ -317,39 +318,41 @@ simdIntMul v1 v2
 simdAddInt8x16 :: SimdVec (SimdLaneN 16) (SimdIntN 8)
                -> SimdVec (SimdLaneN 16) (SimdIntN 8)
                -> SimdVec (SimdLaneN 16) (SimdIntN 8)
-simdAddInt8x16 = mapSimdVec (+)
+simdAddInt8x16 = zipWithSimdVec (+)
 
 simdAddInt16x8 :: SimdVec (SimdLaneN 8) (SimdIntN 16)
                -> SimdVec (SimdLaneN 8) (SimdIntN 16)
                -> SimdVec (SimdLaneN 8) (SimdIntN 16)
-simdAddInt16x8 = mapSimdVec (+)
+simdAddInt16x8 = zipWithSimdVec (+)
 
-simdAddwInt8x16 :: SimdVec (SimdLaneN 8) (SimdIntN 16)
-               -> SimdVec (SimdLaneN 16) (SimdIntN 8)
+simdAddwInt8x8 :: SimdVec (SimdLaneN 8) (SimdIntN 16)
+               -> SimdVec (SimdLaneN 8) (SimdIntN 8)
                -> SimdVec (SimdLaneN 8) (SimdIntN 16)
-simdAddwInt8x16 = \_ _ -> 42 :: SimdVec (SimdLaneN 8) (SimdIntN 16)
+simdAddwInt8x8 = zipWithSimdVec addVecInt16Int8
 
+addVecInt16Int8 :: Vec 8 Int16 -> Vec 8 Int8 -> Vec 8 Int16
+addVecInt16Int8 v1 v2 = v1 + (fmap fromIntegral v2 :: Vec 8 Int16)
 
 simdSubInt8x16 :: SimdVec (SimdLaneN 16) (SimdIntN 8)
                -> SimdVec (SimdLaneN 16) (SimdIntN 8)
                -> SimdVec (SimdLaneN 16) (SimdIntN 8)
-simdSubInt8x16 = mapSimdVec (-)
+simdSubInt8x16 = zipWithSimdVec (-)
 
 simdSubInt16x8 :: SimdVec (SimdLaneN 8) (SimdIntN 16)
                -> SimdVec (SimdLaneN 8) (SimdIntN 16)
                -> SimdVec (SimdLaneN 8) (SimdIntN 16)
-simdSubInt16x8 = mapSimdVec (-)
+simdSubInt16x8 = zipWithSimdVec (-)
 
 
 simdMulInt8x16 :: SimdVec (SimdLaneN 16) (SimdIntN 8)
                -> SimdVec (SimdLaneN 16) (SimdIntN 8)
                -> SimdVec (SimdLaneN 16) (SimdIntN 8)
-simdMulInt8x16 = mapSimdVec (*)
+simdMulInt8x16 = zipWithSimdVec (*)
 
 simdMulInt16x8 :: SimdVec (SimdLaneN 8) (SimdIntN 16)
                -> SimdVec (SimdLaneN 8) (SimdIntN 16)
                -> SimdVec (SimdLaneN 8) (SimdIntN 16)
-simdMulInt16x8 = mapSimdVec (*)
+simdMulInt16x8 = zipWithSimdVec (*)
 
 instance (KnownNat l, KnownNat n) => Num (SimdVec (SimdLaneN l) (SimdUintN n)) where
   (+) = undefined
