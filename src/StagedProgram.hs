@@ -70,10 +70,8 @@ pEval env llref expr = go expr
 
     go (IfZero c te fe) = case recurse c of
       (Static vi) -> if vi == 0 then recurse te else recurse fe
-      (Dynamic vd) -> val_t `seq` val_f `seq`
-                      Dynamic $ IfZero vd (asDyn val_t) (asDyn val_f)
-      where val_t = recurse te
-            val_f = recurse fe
+      (Dynamic vd) -> Dynamic $ IfZero vd (withLetList (\llref -> asDyn $ pEval env llref te))
+                                          (withLetList (\llref -> asDyn $ pEval env llref fe))
 
 -- Define letlist type and some functions
 type Letlist = [(String, Expr)]
