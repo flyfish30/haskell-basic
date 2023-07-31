@@ -14,28 +14,82 @@ data Expr = Var String
           | Mul Expr Expr
           | Let String Expr Expr  -- Let var_name value body
           | IfZero Expr Expr Expr -- IfZero condition true false
+          | Pair Expr Expr
+          | Zro Expr
+          | Fst Expr
+          | LeftE Expr
+          | RightE Expr
+          | Match Expr (String, Expr) (String, Expr)
           deriving (Show)
 
 type Env a = M.Map String a
 
+-- | Define a value for eval
+data Value = VInt Int
+           | VPair Value Value
+           | VLeft Value
+           | VRight Value
+
+-- | Define a static value for pEval
+data SValue = SInt Int
+            | SPair PValue PValue
+            | SLeft PValue
+            | SRight PValue
+            deriving (Show)
+
 -- | Define a type for partial value
-data PValue = Static Int
+data PValue = Static SValue
             | Dynamic Expr
             deriving (Show)
 
 asDyn :: PValue -> Expr
-asDyn (Static i)  = IntVal i
+asDyn (Static (SInt i))    = IntVal i
+asDyn (Static (SPair l r)) = Pair (asDyn l) (asDyn r)
+asDyn (Static (SLeft l))   = LeftE (asDyn l)
+asDyn (Static (SRight r))  = RightE (asDyn r)
 asDyn (Dynamic e) = e
 
 -- | A function for evaluate expression to Int
-eval :: Env Int -> Expr -> Int
+eval :: Env Value -> Expr -> Value
 eval env (Var name) = fromJust $ M.lookup name env
-eval env (IntVal i) = i
-eval env (Add e1 e2) = eval env e1 + eval env e2
-eval env (Mul e1 e2) = eval env e1 * eval env e2
+eval env (IntVal i) = VInt i
+eval env (Add e1 e2) = case (val1, val2) of
+  (VInt i1, VInt i2) -> VInt $ i1 + i2
+  _                  -> error "Operands of Add isn't VInt value"
+  where val1 = eval env e1
+        val2 = eval env e2
+
+eval env (Mul e1 e2) = case (val1, val2) of
+  (VInt i1, VInt i2) -> VInt $ i1 * i2
+  _                  -> error "Operands of Mul isn't VInt value"
+  where val1 = eval env e1
+        val2 = eval env e2
+
 eval env (Let vn e body) = eval (M.insert vn (eval env e) env) body
-eval env (IfZero c te fe) = if (eval env c) == 0 then eval env te
-                                                 else eval env fe
+eval env (IfZero c te fe) = case (eval env c) of
+  VInt ci -> if ci == 0 then eval env te
+                        else eval env fe
+  _       -> error "Condition of IfZero isn't VInt value"
+
+eval env (Pair e1 e2) = VPair val1 val2
+  where val1 = eval env e1
+        val2 = eval env e2
+
+eval env (Zro e) = case eval env e of
+  VPair l r -> l
+  _         -> error "The value of Zro expression isn't VPair value"
+
+eval env (Fst e) = case eval env e of
+  VPair l r -> r
+  _         -> error "The value of Fst expression isn't VPair value"
+
+eval env (LeftE e)  = VLeft $ eval env e
+eval env (RightE e) = VRight $ eval env e
+
+eval env (Match e (lv, lb) (rv, rb)) = case eval env e of
+  VLeft l  -> eval (M.insert lv l env) lb
+  VRight r -> eval (M.insert rv r env) rb
+  _        -> error "The value of Match expression isn't VLeft or VRight value"
 
 -- | A function  for partial evaluate expression to PValue
 pEval :: Env PValue -> LetlistRef -> Expr -> PValue
@@ -43,21 +97,21 @@ pEval env llref expr = go expr
   where
     recurse = \e -> pEval env llref e
     go (Var name) = fromJust $ M.lookup name env
-    go (IntVal i) = Static i
+    go (IntVal i) = Static $ SInt i
 
     go (Add e1 e2) = case (val1, val2) of
-      (Static i1, Static i2) -> Static $ i1 + i2
-      (Static 0, yp) -> yp
-      (xp, Static 0) -> xp
+      (Static (SInt i1), Static (SInt i2)) -> Static $ SInt $ i1 + i2
+      (Static (SInt 0), yp) -> yp
+      (xp, Static (SInt 0)) -> xp
       (xp, yp) -> Dynamic $ Add (asDyn xp) (asDyn yp)
       where val1 = recurse e1
             val2 = recurse e2
     go (Mul e1 e2) = case (val1, val2) of
-      (Static i1, Static i2) -> Static $ i1 * i2
-      (Static 0, yp) -> Static 0
-      (xp, Static 0) -> Static 0
-      (Static 1, yp) -> yp
-      (xp, Static 1) -> xp
+      (Static (SInt i1), Static (SInt i2)) -> Static $ SInt $ i1 * i2
+      (Static (SInt 0), yp) -> Static $ SInt 0
+      (xp, Static (SInt 0)) -> Static $ SInt 0
+      (Static (SInt 1), yp) -> yp
+      (xp, Static (SInt 1)) -> xp
       (xp, yp) -> Dynamic $ Mul (asDyn xp) (asDyn yp)
       where val1 = recurse e1
             val2 = recurse e2
@@ -69,9 +123,33 @@ pEval env llref expr = go expr
                                           llref body
 
     go (IfZero c te fe) = case recurse c of
-      (Static vi) -> if vi == 0 then recurse te else recurse fe
+      (Static (SInt vi)) -> if vi == 0 then recurse te else recurse fe
       (Dynamic vd) -> Dynamic $ IfZero vd (withLetList (\llref -> asDyn $ pEval env llref te))
                                           (withLetList (\llref -> asDyn $ pEval env llref fe))
+      _        -> error "The value of IfZero expression isn't SInt or dynamic"
+
+    go (Pair l r) = Static $ SPair (recurse l) (recurse r)
+
+    go (Zro e) = case recurse e of 
+      (Static (SPair l r)) -> l
+      (Dynamic p) -> Dynamic $ Zro p
+      _           -> error "The value of Zro expression isn't SPair value"
+
+    go (Fst e) = case recurse e of 
+      (Static (SPair l r)) -> r
+      (Dynamic p) -> Dynamic $ Fst p
+      _           -> error "The value of Fst expression isn't SPair value"
+
+    go (LeftE e) = Static $ SLeft (recurse e)
+    go (RightE e) = Static $ SRight (recurse e)
+
+    go (Match e (lv, lb) (rv, rb)) = case recurse e of
+      (Static (SLeft l)) -> pEval (M.insert lv l env) llref lb
+      (Static (SRight r)) -> pEval (M.insert rv r env) llref rb
+      (Dynamic s) -> Dynamic $
+                     Match s (lv, withLetList (\llref -> asDyn $ pEval (M.insert lv (Dynamic $ Var lv) env) llref lb))
+                             (rv, withLetList (\llref -> asDyn $ pEval (M.insert rv (Dynamic $ Var rv) env) llref rb))
+      _           -> error "The value of Match expression isn't SLeft or SRight value"
 
 -- Define letlist type and some functions
 type Letlist = [(String, Expr)]
@@ -83,6 +161,7 @@ pushLetlist llref e = let vn = freshName ()
                       $ atomicModifyIORef llref
                       $ \ll -> let ll' = (vn, e) : ll
                                in ll' `seq` (ll', Var vn)
+
 letLetlist :: Letlist -> Expr -> Expr
 letLetlist ll expr = foldl (\e (n, v) -> Let n v e) expr ll
 {-# INLINE letLetlist #-}
