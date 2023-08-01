@@ -103,7 +103,8 @@ pEval env llref expr = go expr
       (Static (SInt i1), Static (SInt i2)) -> Static $ SInt $ i1 + i2
       (Static (SInt 0), yp) -> yp
       (xp, Static (SInt 0)) -> xp
-      (xp, yp) -> Dynamic $ Add (asDyn xp) (asDyn yp)
+      (xp, yp) -> let tmpe = pushLetlist llref $ Add (asDyn xp) (asDyn yp)
+                  in tmpe `seq` Dynamic tmpe
       where val1 = recurse e1
             val2 = recurse e2
     go (Mul e1 e2) = case (val1, val2) of
@@ -112,11 +113,12 @@ pEval env llref expr = go expr
       (xp, Static (SInt 0)) -> Static $ SInt 0
       (Static (SInt 1), yp) -> yp
       (xp, Static (SInt 1)) -> xp
-      (xp, yp) -> Dynamic $ Mul (asDyn xp) (asDyn yp)
+      (xp, yp) -> let tmpe = pushLetlist llref $ Mul (asDyn xp) (asDyn yp)
+                  in tmpe `seq` Dynamic tmpe
       where val1 = recurse e1
             val2 = recurse e2
 
-    go (Let vn e body) = case pushPValue llref (recurse e) of
+    go (Let vn e body) = case recurse e of
       (Static vi) -> pEval (M.insert vn (Static vi) env) llref body
       (Dynamic vd) -> let lete = pushLetlist llref vd
                       in lete `seq` pEval (M.insert vn (Dynamic lete) env)
@@ -124,31 +126,42 @@ pEval env llref expr = go expr
 
     go (IfZero c te fe) = case recurse c of
       (Static (SInt vi)) -> if vi == 0 then recurse te else recurse fe
-      (Dynamic vd) -> Dynamic $ IfZero vd (withLetList (\llref -> asDyn $ pEval env llref te))
-                                          (withLetList (\llref -> asDyn $ pEval env llref fe))
+      (Dynamic vd) -> let tmpe = pushLetlist llref
+                               $ IfZero vd (withLetList (\llref ->
+                                              asDyn $ pEval env llref te))
+                                           (withLetList (\llref ->
+                                              asDyn $ pEval env llref fe))
+                      in tmpe `seq` Dynamic tmpe
       _        -> error "The value of IfZero expression isn't SInt or dynamic"
 
     go (Pair l r) = Static $ SPair (recurse l) (recurse r)
 
     go (Zro e) = case recurse e of 
       (Static (SPair l r)) -> l
-      (Dynamic p) -> Dynamic $ Zro p
+      (Dynamic p) -> let tmpe = pushLetlist llref $ Zro p
+                     in tmpe `seq` Dynamic tmpe
       _           -> error "The value of Zro expression isn't SPair value"
 
     go (Fst e) = case recurse e of 
       (Static (SPair l r)) -> r
-      (Dynamic p) -> Dynamic $ Fst p
+      (Dynamic p) -> let tmpe = pushLetlist llref $ Fst p
+                     in tmpe `seq` Dynamic tmpe
       _           -> error "The value of Fst expression isn't SPair value"
 
     go (LeftE e) = Static $ SLeft (recurse e)
     go (RightE e) = Static $ SRight (recurse e)
 
-    go (Match e (lv, lb) (rv, rb)) = case pushPValue llref (recurse e) of
+    go (Match e (lv, lb) (rv, rb)) = case recurse e of
       (Static (SLeft l)) -> pEval (M.insert lv l env) llref lb
       (Static (SRight r)) -> pEval (M.insert rv r env) llref rb
-      (Dynamic s) -> Dynamic $
-                     Match s (lv, withLetList (\llref -> asDyn $ pEval (M.insert lv (Dynamic $ Var lv) env) llref lb))
-                             (rv, withLetList (\llref -> asDyn $ pEval (M.insert rv (Dynamic $ Var rv) env) llref rb))
+      (Dynamic s) -> let tmpe = pushLetlist llref
+                              $ Match s (lv, withLetList (\llref ->
+                                  asDyn $ pEval (M.insert lv (Dynamic $ Var lv) env)
+                                                llref lb))
+                                        (rv, withLetList (\llref ->
+                                  asDyn $ pEval (M.insert rv (Dynamic $ Var rv) env)
+                                                llref rb))
+                     in tmpe `seq` Dynamic tmpe
       _           -> error "The value of Match expression isn't SLeft or SRight value"
 
 -- Define letlist type and some functions
