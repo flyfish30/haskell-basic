@@ -116,7 +116,7 @@ pEval env llref expr = go expr
       where val1 = recurse e1
             val2 = recurse e2
 
-    go (Let vn e body) = case recurse e of
+    go (Let vn e body) = case pushPValue llref (recurse e) of
       (Static vi) -> pEval (M.insert vn (Static vi) env) llref body
       (Dynamic vd) -> let lete = pushLetlist llref vd
                       in lete `seq` pEval (M.insert vn (Dynamic lete) env)
@@ -143,7 +143,7 @@ pEval env llref expr = go expr
     go (LeftE e) = Static $ SLeft (recurse e)
     go (RightE e) = Static $ SRight (recurse e)
 
-    go (Match e (lv, lb) (rv, rb)) = case recurse e of
+    go (Match e (lv, lb) (rv, rb)) = case pushPValue llref (recurse e) of
       (Static (SLeft l)) -> pEval (M.insert lv l env) llref lb
       (Static (SRight r)) -> pEval (M.insert rv r env) llref rb
       (Dynamic s) -> Dynamic $
@@ -161,6 +161,19 @@ pushLetlist llref e = let vn = freshName ()
                       $ atomicModifyIORef llref
                       $ \ll -> let ll' = (vn, e) : ll
                                in ll' `seq` (ll', Var vn)
+
+pushPValue :: LetlistRef -> PValue -> PValue
+pushPValue llref pv = go pv
+  where
+    go (Static (SInt i))    = Static $ SInt i
+    go (Static (SPair l r)) = Static $ SPair (pushPValue llref l)
+                                             (pushPValue llref r)
+    go (Static (SLeft l))   = Static $ SLeft (pushPValue llref l)
+    go (Static (SRight r))  = Static $ SRight (pushPValue llref r)
+    -- The function pushLetlist should modify llref, so it use seq to ensure
+    -- pushLetlist must be evaluated before consturct Dynamic expression.
+    go (Dynamic d)          = varExpr `seq` Dynamic varExpr
+      where varExpr = pushLetlist llref d
 
 letLetlist :: Letlist -> Expr -> Expr
 letLetlist ll expr = foldl (\e (n, v) -> Let n v e) expr ll
