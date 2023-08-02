@@ -20,6 +20,8 @@ data Expr = Var String
           | LeftE Expr
           | RightE Expr
           | Match Expr (String, Expr) (String, Expr)
+          | Fun String Expr  -- Fun var_name fun_body
+          | App Expr Expr    -- App fun arg
           deriving (Show)
 
 type Env a = M.Map String a
@@ -29,27 +31,32 @@ data Value = VInt Int
            | VPair Value Value
            | VLeft Value
            | VRight Value
+           | VFun (Value -> Value)
 
 -- | Define a static value for pEval
 data SValue = SInt Int
             | SPair PValue PValue
             | SLeft PValue
             | SRight PValue
-            deriving (Show)
+            | SFun   (LetlistRef -> PValue -> PValue)
 
 -- | Define a type for partial value
 data PValue = Static SValue
             | Dynamic Expr
-            deriving (Show)
 
 asDyn :: PValue -> Expr
 asDyn (Static (SInt i))    = IntVal i
 asDyn (Static (SPair l r)) = Pair (asDyn l) (asDyn r)
 asDyn (Static (SLeft l))   = LeftE (asDyn l)
 asDyn (Static (SRight r))  = RightE (asDyn r)
+asDyn (Static (SFun lam))    = name `seq`
+                             Fun name $
+                                 withLetList (\llref ->
+                                   asDyn $ lam llref (Dynamic $ Var name))
+  where name = freshName ()
 asDyn (Dynamic e) = e
 
--- | A function for evaluate expression to Int
+-- | A function for evaluate expression to Value
 eval :: Env Value -> Expr -> Value
 eval env (Var name) = fromJust $ M.lookup name env
 eval env (IntVal i) = VInt i
@@ -90,6 +97,12 @@ eval env (Match e (lv, lb) (rv, rb)) = case eval env e of
   VLeft l  -> eval (M.insert lv l env) lb
   VRight r -> eval (M.insert rv r env) rb
   _        -> error "The value of Match expression isn't VLeft or VRight value"
+
+eval env (Fun v b) = VFun $ \p -> eval (M.insert v p env) b
+
+eval env (App f x) = case eval env f of
+  VFun lam -> lam $ eval env x
+  _       -> error "The function value of App isn't VFunc value"
 
 -- | A function  for partial evaluate expression to PValue
 pEval :: Env PValue -> LetlistRef -> Expr -> PValue
@@ -163,6 +176,15 @@ pEval env llref expr = go expr
                                                 llref rb))
                      in tmpe `seq` Dynamic tmpe
       _           -> error "The value of Match expression isn't SLeft or SRight value"
+
+    go (Fun v b) = Static $ SFun (\llref p -> pEval (M.insert v p env) llref b)
+
+    go (App f x) = case recurse f of
+      (Static (SFun lam)) -> lam llref $ recurse x
+      (Dynamic pf) -> let tmpe = pushLetlist llref
+                               $ App pf (asDyn $ recurse x)
+                       in tmpe `seq` Dynamic tmpe
+      _           -> error "The function value of App expression isn't SFun value"
 
 -- Define letlist type and some functions
 type Letlist = [(String, Expr)]
