@@ -61,7 +61,8 @@ library
                        diagrams-lib, diagrams-svg,
                        SVGFonts,
                        ghc-typelits-natnormalise,
-                       JuicyPixels
+                       JuicyPixels,
+                       deepseq
   hs-source-dirs:      src
   ghc-options:         -O2
   default-language:    Haskell2010
