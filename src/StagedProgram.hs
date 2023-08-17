@@ -1,5 +1,5 @@
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveAnyClass, DeriveGeneric #-}
 
 module StagedProgram where
 
@@ -10,6 +10,7 @@ import qualified Data.Map as M
 import Data.IORef
 import GHC.IO (unsafeDupablePerformIO, unsafePerformIO)
 import GHC.Generics (Generic)
+import Control.Monad.State
 
 import Control.DeepSeq
 
@@ -27,9 +28,13 @@ data Expr = Var String
           | Match Expr (String, Expr) (String, Expr)
           | Fun String Expr  -- Fun var_name fun_body
           | App Expr Expr    -- App fun arg
+          | Count            -- counter effect
           deriving (Show, Generic, NFData)
 
 type Env a = M.Map String a
+
+type World = Int
+type WorldRef = IORef World
 
 -- | Define a value for eval
 data Value = VInt Int
@@ -43,7 +48,7 @@ data SValue = SInt Int
             | SPair PValue PValue
             | SLeft PValue
             | SRight PValue
-            | SFun   (LetlistRef -> PValue -> PValue)   -- SFun lam
+            | SFun   (LetlistRef -> PValue -> (PValue, Maybe Int))  -- SFun lam
 
 -- | Define a type for partial value
 -- Force the dynamic value must be a variable name for avoid copy expression
@@ -51,9 +56,20 @@ data PValue = MkPValue { static :: Maybe SValue
                        , dyn :: String   -- variable name
                        }
 
+mkIntVal i = MkPValue { static = Just (SInt i)
+                      , dyn = ""
+                      }
+
 mkVarVal name = MkPValue { static = Nothing
                          , dyn = name
                          }
+
+-- | definition a effective impure value
+type EffValue = State (Maybe Int) PValue
+
+
+mergeCnt (Just a) (Just b) = if a == b then Just a else Nothing
+mergeCnt _        _        = Nothing
 
 {-
 asDyn :: PValue -> Expr
@@ -69,138 +85,184 @@ asDyn (Static (SFun lam))    = name `seq`
 asDyn (Dynamic e) = e
 -}
 
+dynS (a, s) = (Var $ dyn $ a, s)
+
 -- | A function for evaluate expression to Value
-eval :: Env Value -> Expr -> Value
-eval env (Var name) = fromJust $ M.lookup name env
-eval env (IntVal i) = VInt i
-eval env (Add e1 e2) = case (val1, val2) of
+eval :: Env Value -> WorldRef -> Expr -> Value
+eval env wref (Var name) = fromJust $ M.lookup name env
+eval env wref (IntVal i) = VInt i
+eval env wref (Add e1 e2) = case (val1, val2) of
   (VInt i1, VInt i2) -> VInt $ i1 + i2
   _                  -> error "Operands of Add isn't VInt value"
-  where val1 = eval env e1
-        val2 = eval env e2
+  where val1 = eval env wref e1
+        val2 = eval env wref e2
 
-eval env (Mul e1 e2) = case (val1, val2) of
+eval env wref (Mul e1 e2) = case (val1, val2) of
   (VInt i1, VInt i2) -> VInt $ i1 * i2
   _                  -> error "Operands of Mul isn't VInt value"
-  where val1 = eval env e1
-        val2 = eval env e2
+  where val1 = eval env wref e1
+        val2 = eval env wref e2
 
-eval env (Let vn e body) = eval (M.insert vn (eval env e) env) body
-eval env (IfZero c te fe) = case (eval env c) of
-  VInt ci -> if ci == 0 then eval env te
-                        else eval env fe
+eval env wref (Let vn e body) = eval (M.insert vn (eval env wref e) env) wref body
+eval env wref (IfZero c te fe) = case (eval env wref c) of
+  VInt ci -> if ci == 0 then eval env wref te
+                        else eval env wref fe
   _       -> error "Condition of IfZero isn't VInt value"
 
-eval env (Pair e1 e2) = VPair val1 val2
-  where val1 = eval env e1
-        val2 = eval env e2
+eval env wref (Pair e1 e2) = VPair val1 val2
+  where val1 = eval env wref e1
+        val2 = eval env wref e2
 
-eval env (Zro e) = case eval env e of
+eval env wref (Zro e) = case eval env wref e of
   VPair l r -> l
   _         -> error "The value of Zro expression isn't VPair value"
 
-eval env (Fst e) = case eval env e of
+eval env wref (Fst e) = case eval env wref e of
   VPair l r -> r
   _         -> error "The value of Fst expression isn't VPair value"
 
-eval env (LeftE e)  = VLeft $ eval env e
-eval env (RightE e) = VRight $ eval env e
+eval env wref (LeftE e)  = VLeft $ eval env wref e
+eval env wref (RightE e) = VRight $ eval env wref e
 
-eval env (Match e (lv, lb) (rv, rb)) = case eval env e of
-  VLeft l  -> eval (M.insert lv l env) lb
-  VRight r -> eval (M.insert rv r env) rb
+eval env wref (Match e (lv, lb) (rv, rb)) = case eval env wref e of
+  VLeft l  -> eval (M.insert lv l env) wref lb
+  VRight r -> eval (M.insert rv r env) wref rb
   _        -> error "The match expression of Match isn't VLeft or VRight value"
 
-eval env (Fun v b) = VFun $ \p -> eval (M.insert v p env) b
+eval env wref (Fun v b) = VFun $ \p -> eval (M.insert v p env) wref b
 
-eval env (App f x) = case eval env f of
-  VFun lam -> lam $ eval env x
+eval env wref (App f x) = case eval env wref f of
+  VFun lam -> lam $ eval env wref x
   _       -> error "The function of App isn't VFunc value"
 
+eval env wref Count = unsafePerformIO
+                    $ atomicModifyIORef wref
+                                        (\w -> let w' = w + 1 in (w', VInt w))
+
 -- | A function for partial evaluate expression to PValue
-pEval :: Env PValue -> LetlistRef -> Expr -> PValue
+pEval :: Env PValue -> LetlistRef -> Expr -> EffValue
 pEval env llref expr = go expr
   where
     recurse = \e -> pEval env llref e
-    go (Var name) = fromJust $ M.lookup name env
-    go (IntVal i) = pInt llref $ i
+    go (Var name) = return $ fromJust $ M.lookup name env
+    go (IntVal i) = return $ pInt llref $ i
 
-    go (Add e1 e2) = case (static val1, static val2) of
-      (Just (SInt i1), Just (SInt i2)) -> pInt llref $ i1 + i2
-      (Just (SInt 0), _) -> val2
-      (_, Just (SInt 0)) -> val1
-      _     -> mkDynamic llref $ Add (Var $ dyn val1) (Var $ dyn val2)
-      where val1 = recurse e1
-            val2 = recurse e2
+    go (Add e1 e2) = do
+      val1 <- recurse e1
+      val2 <- recurse e2
+      return $
+        case (static val1, static val2) of
+          (Just (SInt i1), Just (SInt i2)) -> pInt llref $ i1 + i2
+          (Just (SInt 0), _) -> val2
+          (_, Just (SInt 0)) -> val1
+          _     -> mkDynamic llref $ Add (Var $ dyn val1) (Var $ dyn val2)
 
-    go (Mul e1 e2) = case (static val1, static val2) of
-      (Just (SInt i1), Just (SInt i2)) -> pInt llref $ i1 * i2
-      (Just (SInt 0), _) -> pInt llref $ 0
-      (_, Just (SInt 0)) -> pInt llref $ 0
-      (Just (SInt 1), _) -> val2
-      (_, Just (SInt 1)) -> val1
-      _     -> mkDynamic llref $ Mul (Var $ dyn val1) (Var $ dyn val2)
-      where val1 = recurse e1
-            val2 = recurse e2
+    go (Mul e1 e2) = do
+      val1 <- recurse e1
+      val2 <- recurse e2
+      return $
+        case (static val1, static val2) of
+          (Just (SInt i1), Just (SInt i2)) -> pInt llref $ i1 * i2
+          (Just (SInt 0), _) -> pInt llref $ 0
+          (_, Just (SInt 0)) -> pInt llref $ 0
+          (Just (SInt 1), _) -> val2
+          (_, Just (SInt 1)) -> val1
+          _     -> mkDynamic llref $ Mul (Var $ dyn val1) (Var $ dyn val2)
 
-    go (Let vn e body) = case static letv of
-      Just vi -> pEval (M.insert vn letv env) llref body
-      Nothing -> let letn = pushLetlist llref (Var $ dyn letv)
-                 in letn `seq` pEval (M.insert vn (mkDynamic llref (Var letn)) env) llref body
-      where letv = recurse e
+    go (Let vn e body) = do
+      letv <- recurse e
+      case static letv of
+        Just vi -> pEval (M.insert vn letv env) llref body
+        Nothing -> let letn = pushLetlist llref (Var $ dyn letv)
+                   in letn `seq`
+                      pEval (M.insert vn (mkDynamic llref (Var letn)) env)
+                            llref body
 
-    go (IfZero c te fe) = case static vc of
-      Just (SInt vi) -> if vi == 0 then recurse te else recurse fe
-      Just  _ -> error "The value of IfZero expression isn't SInt or dynamic"
-      Nothing -> let tmpe = IfZero vd (withLetList (\llref ->
-                                         Var $ dyn $ pEval env llref te))
-                                      (withLetList (\llref ->
-                                         Var $ dyn $ pEval env llref fe))
-                 in mkDynamic llref tmpe
-      where vc = recurse c
-            vd = Var $ dyn vc
+    go (IfZero c te fe) = do
+      pc <- recurse c
+      let vd = Var $ dyn pc
+      case static pc of
+        Just (SInt cv) -> if cv == 0 then recurse te else recurse fe
+        Just  _ -> error "The value of IfZero expression isn't SInt or dynamic"
+        Nothing -> do
+          mc <- get
+          let (le, lc) = withLetList' (\llref ->
+                           dynS ( runState (pEval env llref te) mc))
+          let (re, rc) = withLetList' (\llref ->
+                           dynS $ runState (pEval env llref fe) mc)
+          put $ mergeCnt lc rc
+          return $ mkDynamic llref $ IfZero vd le re
 
-    go (Pair l r) = pPair llref (recurse l) (recurse r)
+    go (Pair l r) = do
+      vl <- recurse l
+      vr <- recurse r
+      return $ pPair llref (vl) (vr)
 
-    go (Zro e) = case static val0 of
-      Just (SPair l r) -> l
-      Just  _ -> error "The value of Zro expression isn't SPair value"
-      Nothing -> mkDynamic llref $ Zro p
-      where val0 = recurse e
-            p  = Var $ dyn val0
+    go (Zro e) = do
+      val0 <- recurse e
+      let p = Var $ dyn val0
+      return $
+        case static val0 of
+          Just (SPair l r) -> l
+          Just  _ -> error "The value of Zro expression isn't SPair value"
+          Nothing -> mkDynamic llref $ Zro p
 
-    go (Fst e) = case static val1 of
-      Just (SPair l r) -> r
-      Just  _ -> error "The value of Fst expression isn't SPair value"
-      Nothing -> mkDynamic llref $ Fst p
-      where val1 = recurse e
-            p  = Var $ dyn val1
+    go (Fst e) = do
+      val1 <- recurse e
+      let p = Var $ dyn val1
+      return $
+        case static val1 of
+          Just (SPair l r) -> r
+          Just  _ -> error "The value of Fst expression isn't SPair value"
+          Nothing -> mkDynamic llref $ Fst p
 
-    go (LeftE e)  = pLeft  llref (recurse e)
-    go (RightE e) = pRight llref (recurse e)
+    go (LeftE e)  = do
+      vl <- recurse e
+      return $ pLeft llref vl
+    go (RightE e) = do
+      vr <- recurse e
+      return $ pRight llref vr
 
-    go (Match e (lv, lb) (rv, rb)) = case static vm of
-      Just (SLeft l)  -> pEval (M.insert lv l env) llref lb
-      Just (SRight r) -> pEval (M.insert rv r env) llref rb
-      Just  _ -> error "The match expression of Match isn't SLeft or SRight value"
-      Nothing -> let tmpe = Match s (lv, withLetList (\llref ->
-                              Var $ dyn $ pEval (M.insert lv (mkVarVal lv) env)
-                                                llref lb))
-                                    (rv, withLetList (\llref ->
-                              Var $ dyn $ pEval (M.insert rv (mkVarVal rv) env)
-                                                llref rb))
-                 in mkDynamic llref tmpe
-      where vm = recurse e
-            s  = Var $ dyn vm
+    go (Match e (lv, lb) (rv, rb)) = do
+      vm <- recurse e
+      let s = Var $ dyn vm
+      case static vm of
+        Just (SLeft l)  -> pEval (M.insert lv l env) llref lb
+        Just (SRight r) -> pEval (M.insert rv r env) llref rb
+        Just  _ -> error "The match expression of Match isn't SLeft or SRight value"
+        Nothing -> do
+          mc <- get
+          let (le, lc) = withLetList' (\llref ->
+                           dynS $ runState (pEval (M.insert lv (mkVarVal lv) env)
+                                                  llref lb)
+                                           mc)
+          let (re, rc) = withLetList' (\llref ->
+                           dynS $ runState (pEval (M.insert rv (mkVarVal rv) env)
+                                                  llref rb)
+                                           mc)
+          put $ mergeCnt lc rc
+          return $ mkDynamic llref $ Match s (lv, le) (rv, re)
 
-    go (Fun v b) = pFun llref $ (\llref p -> pEval (M.insert v p env) llref b)
+    go (Fun v b) = do
+      mc <- get
+      return $ pFun llref (\llref p -> runState (pEval (M.insert v p env) llref b) mc)
 
-    go (App f x) = case static vf of
-      Just (SFun lam) -> lam llref $ recurse x
-      Just  _ -> error "The function of App isn't SFun value"
-      Nothing -> mkDynamic llref $ App pf (Var $ dyn $ recurse x)
-      where vf = recurse f
-            pf = Var $ dyn vf
+    go (App f x) = do
+      pf <- recurse f
+      px <- recurse x
+      case static pf of
+        Just (SFun lam) -> let (v, s) = lam llref px
+                           in put s >> return v
+        Just  _ -> error "The function of App isn't SFun value"
+        Nothing -> do
+          put Nothing
+          return $ mkDynamic llref $ App (Var $ dyn $ pf) (Var $ dyn $ px)
+
+    go Count = do
+      mc <- get
+      case mc of
+        Just i -> put (Just (i + 1)) >> (return $ pInt llref i)
+        Nothing -> return $ mkDynamic llref Count
 
 -- Define letlist type and some functions
 type Letlist = [(String, Expr)]
@@ -266,8 +328,9 @@ pFun llref lam = name `seq` lame `seq`
                  mkStatic llref (SFun lam)
                                 (Fun name lame)
   where name = freshName ()
-        lame = withLetList(\llref ->
-                 Var $ dyn $ lam llref (mkVarVal name))
+        (lame, _) =
+               withLetList'(\llref ->
+                 dynS $ lam llref (mkVarVal name))
         -- dynFun = mkDynamic llref (Fun name lame)
 
 letLetlist :: Letlist -> Expr -> Expr
@@ -283,6 +346,12 @@ withLetList f = expr `deepseq` letLetlist ll expr
   where llref = unsafePerformIO $ newIORef []
         ll = getLetlist llref
         expr = f llref
+
+withLetList' :: (LetlistRef -> (Expr, Maybe Int)) -> (Expr, Maybe Int)
+withLetList' f = expr `deepseq` (letLetlist ll expr, w)
+  where llref = unsafePerformIO $ newIORef []
+        ll = getLetlist llref
+        (expr, w) = f llref
 
 -- create a global variable varCounter for generate counter
 varCounter :: IORef Int
