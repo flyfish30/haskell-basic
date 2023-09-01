@@ -64,7 +64,7 @@ data SValue = SInt Int
             | SPair PValue PValue
             | SLeft PValue
             | SRight PValue
-            | SFun   (LetlistRef -> PValue -> (PValue, World))  -- SFun lam
+            | SFun   (LetlistRef -> PValue -> EffValue)  -- SFun lam
             | SUnit
             | SRef Int
 
@@ -74,8 +74,9 @@ instance Show SValue where
                      ++ ", " ++ show p2 ++ ")"
   show (SLeft l)  = "SLeft " ++ show l
   show (SRight r) = "SLeft " ++ show r
-  show (SFun f)   = "SFun " ++ show (f (unsafePerformIO $ newIORef [])
-                                       (mkVarVal ""))
+  show (SFun f)   = "SFun " ++ show (runState (f (unsafePerformIO $ newIORef [])
+                                                 (mkVarVal ""))
+                                              (MkWorld Nothing M.empty))
   show SUnit      = "SUnit"
   show (SRef i)   = "SRef " ++ show i
 
@@ -311,17 +312,15 @@ pEval env llref = go
           put $ mergeWorld lw rw
           return $ mkDynamic llref $ Match s (lv, le) (rv, re)
 
-    go (Fun v b) = do
-      w <- get
-      return $ pFun llref (\llref p -> runState (pEval (M.insert v p env) llref b) w)
+    go efun@(Fun v b) =
+      return $ pFun llref (\llref p -> pEval (M.insert v p env) llref b) efun
 
     go (App f x) = do
       pf <- recurse f
       px <- recurse x
       case static pf of
-        Just (SFun lam) -> let (v, s) = lam llref px
-                           in put s >> return v
-        Just  _ -> error "The function of App isn't SFun value"
+        Just (SFun lam) -> lam llref px
+        Just  _ -> error "The function value of App expression isn't SFun value"
         Nothing -> do
           put (MkWorld Nothing M.empty)
           return $ mkDynamic llref $ App (Var $ dyn $ pf) (Var $ dyn $ px)
@@ -426,14 +425,7 @@ pRight llref r = r `seq`
                  mkStatic llref (SRight r)
                                 (RightE (Var $ dyn r))
 
-pFun llref lam = name `seq` lame `seq`
-                 mkStatic llref (SFun lam)
-                                (Fun name lame)
-  where name = freshName ()
-        (lame, _) =
-               withLetList'(\llref ->
-                 dynS $ lam llref (mkVarVal name))
-        -- dynFun = mkDynamic llref (Fun name lame)
+pFun llref lam efun = mkStatic llref (SFun lam) (Var "")
 
 letLetlist :: Letlist -> Expr -> Expr
 letLetlist ll expr = foldl' (\e (n, v) -> Let n v e) expr ll
