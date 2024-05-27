@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeInType, TypeOperators #-}
+{-# LANGUAGE DataKinds, TypeOperators #-}
 {-# LANGUAGE GADTs #-}
 
 module ExprSimple where
@@ -51,12 +51,15 @@ tokOperator c
   | c == '/' = Divs
 
 tokNumber :: String -> [Token]
-tokNumber s = if hasDot
+tokNumber s = if hasDot s1
               then TokNum (DoubleNum (read (d1 ++ "." ++ d2))) : toknize s2
               else TokNum (IntNum (read d1)) : toknize s1
   where (d1, s1) = span isDigit s
-        hasDot   = if not (null s1) then (head s1) == '.' else False
-        (d2, s2) = span isDigit (tail s1)
+        hasDot []  = False
+        hasDot (a:as) = a == '.'
+        (d2, s2) = span isDigit (safeTail s1)
+        safeTail [] = []
+        safeTail (x:xs) = xs
 
 tokIdent s = TokIdent chars : toknize s1
   where (chars, s1) = span isAlpha s
@@ -64,6 +67,7 @@ tokIdent s = TokIdent chars : toknize s1
 data SignSymb = SignPos | SignNeg
 
 data Expr a where
+  Nop  :: Expr a
   LitI :: Int -> Expr Int
   LitD :: Double -> Expr Double
   Var  :: String -> Expr a
@@ -76,6 +80,7 @@ data Expr a where
   Div :: Expr a -> Expr a -> Expr a
 
 showExpr :: Expr a -> String
+showExpr Nop           = show ""
 showExpr (LitI i)      = show i
 showExpr (LitD d)      = show d
 showExpr (Var s)       = s
@@ -87,6 +92,7 @@ showExpr (Mul e1 e2)   = showExpr e1 ++ " * " ++ showExpr e2
 showExpr (Div e1 e2)   = showExpr e1 ++ " / " ++ showExpr e2
 
 simplifyExpr :: Expr a -> Expr a
+simplifyExpr Nop           = Nop
 simplifyExpr e@(LitI i)    = e
 simplifyExpr e@(LitD d)    = e
 simplifyExpr e@(Var s)     = e
@@ -191,9 +197,10 @@ parseTerm ts = case lookAHead ts' of
 
 
 parseFactor :: [Token] -> (Expr Int, [Token])
-parseFactor ts = case lookAHead ts of
+parseFactor [] = (Nop, [])
+parseFactor ts@(x:xs) = case lookAHead ts of
   (TokNum (IntNum i))    -> 
-     case lookAHead (tail ts) of
+     case lookAHead xs of
      (TokIdent s) -> (TermI i (Var s), accept . accept $ ts)
      _            -> (LitI i, accept ts)
   (TokIdent s)           -> (Var s, accept ts)

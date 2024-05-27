@@ -7,6 +7,15 @@ module FreeX () where
 
 import Data.Monoid
 import Data.Functor.Const
+import Data.Default
+
+safeHead :: Default a => [a] -> a
+safeHead [] = def
+safeHead (x:xs) = x
+
+safeTail :: [a] -> [a]
+safeTail [] = []
+safeTail (x:xs) = xs
 
 infixr 0 :~>
 type f :~> g = forall a. f a -> g a
@@ -329,14 +338,14 @@ interp phi = monad . freeMap phi
 
 phiRun :: StackF k -> MemState k
 phiRun (Push a k) = State $ \s -> (k, a:s)
-phiRun (Pop k)    = State $ \s -> (k, tail s)
-phiRun (Top ik)   = State $ \s -> (ik (head s), s)
+phiRun (Pop k)    = State $ \s -> (k, safeTail s)
+phiRun (Top ik)   = State $ \s -> (ik (safeHead s), s)
 phiRun (Add k)    = State $ \s@(x:y:ts) -> (k, (x + y) : ts)
 phiRun (Mul k)    = State $ \s@(x:y:ts) -> (k, (x * y) : ts)
 {-
 phiRun (Push a k) = (State $ \s -> ((), a:s)) >> return k
-phiRun (Pop k)    = (State $ \s -> ((), tail s)) >> return k
-phiRun (Top ik)   = (State $ \s -> ((head s), s)) >>= return . ik
+phiRun (Pop k)    = (State $ \s -> ((), safeTail s)) >> return k
+phiRun (Top ik)   = (State $ \s -> ((safeHead s), s)) >>= return . ik
 phiRun (Add k)    = (State $ \s@(x:y:ts) -> ((), (x + y) : ts)) >> return k
 phiRun (Mul k)    = (State $ \s@(x:y:ts) -> ((), (x * y) : ts)) >> return k
 -}
@@ -358,8 +367,8 @@ phiShow (Mul k)    = Writer ((), "Mul, ") >> return k
 interpState :: Free StackF Int -> MemState Int
 interpState (Pure a) = return a
 interpState (Free (Push a k)) = (State $ \s -> ((), a:s)) >> interpState k
-interpState (Free (Pop k))  = (State $ \s -> ((), tail s)) >> interpState k
-interpState (Free (Top ik)) = (State $ \s -> (ik (head s), s)) >>= interpState
+interpState (Free (Pop k))  = (State $ \s -> ((), safeTail s)) >> interpState k
+interpState (Free (Top ik)) = (State $ \s -> (ik (safeHead s), s)) >>= interpState
 interpState (Free (Add k))  = (State $ \s@(x:y:ts) -> ((), (x + y) : ts)) >> interpState k
 interpState (Free (Mul k))  = (State $ \s@(x:y:ts) -> ((), (x * y) : ts)) >> interpState k
 
@@ -391,8 +400,8 @@ calcF = do
 runAlg :: HAlg (FreeMF StackF) MemState
 runAlg (PureMF a) = return a
 runAlg (FreeMF (Push a k)) = (State $ \s -> ((), a:s)) >> k
-runAlg (FreeMF (Pop k))  = (State $ \s -> ((), tail s)) >> k
-runAlg (FreeMF (Top ik)) = get >>= ik . head
+runAlg (FreeMF (Pop k))  = (State $ \s -> ((), safeTail s)) >> k
+runAlg (FreeMF (Top ik)) = get >>= ik . safeHead
 runAlg (FreeMF (Add k))  = (State $ \s@(x:y:ts) -> ((), (x+y):ts)) >> k
 runAlg (FreeMF (Mul k))  = (State $ \s@(x:y:ts) -> ((), (x*y):ts)) >> k
 

@@ -1,5 +1,5 @@
 {-# LANGUAGE TypeOperators, TypeApplications #-}
-{-# LANGUAGE TypeInType, DataKinds #-}
+{-# LANGUAGE DataKinds, DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GADTs #-}

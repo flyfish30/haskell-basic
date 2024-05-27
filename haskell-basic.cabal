@@ -23,7 +23,7 @@ Source-Repository head
 
 executable hsbasic
   main-is:             src/Main.hs
-  build-depends:       base >=4.12 && <4.20,
+  build-depends:       base >=4.12 && <4.22,
                        finite-typelits >=0.1 && <0.2,
                        vector >=0.12,
                        comonad >=5.0 && <5.1,
@@ -51,10 +51,11 @@ library
                        ScopedTypeVariables, InstanceSigs,
                        NoStarIsType, MultiParamTypeClasses,
                        FunctionalDependencies, PolyKinds
-  build-depends:       base >=4.12 && <4.20,
+  build-depends:       base >=4.12 && <4.22,
                        finite-typelits >=0.1 && <0.2,
-                       vector >=0.12 && <0.13,
-                       vector-algorithms >=0.8 && <0.10,
+                       data-default,
+                       vector >=0.12 && <0.14,
+                       vector-algorithms >=0.8 && <0.11,
                        comonad >=5.0 && <5.1,
                        mtl,
                        type-errors,

@@ -7,7 +7,7 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE TypeInType #-}
+{-# LANGUAGE DataKinds #-}
 
 module FirstClassFamilies where
 
