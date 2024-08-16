@@ -114,4 +114,11 @@ instance (Functor f, Functor g) => Functor (Compose f g) where
 
 instance (Applicative f, Applicative g) => Applicative (Compose f g) where
   pure a = Compose (pure (pure a))
+  -- <*> :: f (g (a -> b)) -> f (g a) -> f (g b)
+  -- inner <*> :: g (a -> b) -> g a -> g b
+  -- fmap (inner <*>) :: f (g (a -> b)) -> f (g a -> g b)
+  -- => f (g a -> g b) -> f (g a) -> f (g b)
+  -- outer <*> :: f (g a -> g b) -> f (g a) -> f (g b)
+  -- <*> = outer <*> . fmap (inner <*>)
   Compose fgf <*> Compose fga = Compose $ (<*>) <$> fgf <*> fga
+

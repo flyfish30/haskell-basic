@@ -28,20 +28,6 @@ instance Functor (FreeF f) where
   fmap f (FreeF g x) = FreeF (f . g) x
 
 -- Free Applicative
-class Functor f => MultiFunctor f where
-  fmap0 :: a -> f a
-  fmap1 :: (a -> b) -> f a -> f b
-  fmap1 = fmap
-  fmap2 :: (a -> b -> c) -> f a -> f b -> fc
-
-fmap3 :: MultiFunctor f
-      => (a -> b -> c -> d)
-      -> f a -> f b -> f c -> f d
-fmap3 f x y z = fmap2 ($) (fmap2 f x y) z
-
--- (<*>) = fmap2 ($)
--- fmap2 h x y = fmap h x <*> y
-
 infixr 4 :$:
 data FreeA f a = PureA a
                | forall b. f (b -> a) :$: FreeA f b
