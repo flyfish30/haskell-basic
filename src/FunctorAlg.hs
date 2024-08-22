@@ -104,7 +104,7 @@ instance (Applicative f, Applicative g, Natural g f)
   InR gf <*> InL fa = InL (eta gf <*> fa)
 
 -- | Compose functor f and g
-data Compose f g a = Compose (f (g a))
+newtype Compose f g a = Compose (f (g a))
                      deriving Show
 infixr 9 :.:
 type (:.:) = Compose
