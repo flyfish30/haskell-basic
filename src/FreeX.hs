@@ -265,7 +265,7 @@ get :: State s s
 get = State $ \s -> (s, s)
 
 put :: s -> State s ()
-put s = State $ \s -> ((), s)
+put s = State $ \_ -> ((), s)
 
 {-
 instance (Show s, Show a) => Show (State s a) where
@@ -290,6 +290,21 @@ instance Monad' (State s) where
   monad' (Pure a) = State $ \s -> (a, s)
   monad' (Free state) = State $ \s -> let (a, s1) = runState state s
                                       in  runState (monad' a) s1
+
+-- The State s a is Just a Free (StateF s) a
+data StateF s a = GetF (s -> a)
+                | PutF s a
+
+instance Functor (StateF s) where
+  fmap f (GetF g) = GetF (f . g)
+  fmap f (PutF s a) = PutF s (f a)
+
+type State' s = Free (StateF s)
+
+runState' :: Free (StateF s) a -> s -> (a, s)
+runState' (Pure a) s = (a, s)
+runState' (Free (GetF g)) s = runState' (g s) s
+runState' (Free (PutF s' frm)) s = runState' frm s'
 
 data StackF k = Push Int k
               | Pop k
@@ -317,6 +332,7 @@ calc = do
   pure x
 
 type MemState = State [Int]
+type MemState' = State' [Int]
 
 -- | This function is used for demostrate f = free f . ins
 interp :: (Functor f, Monad m) => (f :~> m) -> (Free f :~> m)
@@ -335,6 +351,14 @@ phiRun (Top ik)   = (State $ \s -> ((safeHead s), s)) >>= return . ik
 phiRun (Add k)    = (State $ \s@(x:y:ts) -> ((), (x + y) : ts)) >> return k
 phiRun (Mul k)    = (State $ \s@(x:y:ts) -> ((), (x * y) : ts)) >> return k
 -}
+-- runState (interp phiRun calc) []
+
+phiRun' :: StackF a -> MemState' a
+phiRun' (Push a k) = Free (GetF $ \s -> Free $ PutF (a:s) (Pure k))
+phiRun' (Pop k)    = Free (GetF $ \s -> Free $ PutF (safeTail s) (Pure k))
+phiRun' (Top ik)   = Free (GetF $ \s -> Free $ PutF s (Pure $ ik $ safeHead s))
+phiRun' (Add k)    = Free (GetF $ \s@(x:y:ts) -> Free $ PutF ((x + y) : ts) (Pure k))
+phiRun' (Mul k)    = Free (GetF $ \s@(x:y:ts) -> Free $ PutF ((x * y) : ts) (Pure k))
 
 phiShow :: StackF k -> Writer String k
 phiShow (Push a k) = Writer (k, "Push " ++ show a ++ ", ")
