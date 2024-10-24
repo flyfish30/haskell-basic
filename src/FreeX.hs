@@ -1,6 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE UndecidableInstances, FlexibleInstances #-}
 {-# LANGUAGE TypeOperators, TypeApplications, RankNTypes #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DeriveFunctor #-}
 
 module FreeX () where
@@ -70,9 +71,11 @@ concatFree (Free frfr) = Free (fmap concatFree frfr)
 liftFree :: Functor f => forall a. f a -> Free f a
 liftFree = Free . fmap Pure
 
-foldFree :: Functor f => forall a. (f a -> a) -> Free f a -> a
-foldFree f (Pure a)    = a
-foldFree f (Free ffra) = f $ fmap (foldFree f) ffra
+foldFree :: (Functor f, Applicative m, Monad m) => (forall x. (f x -> m x)) -> Free f a -> m a
+foldFree eta (Pure a)    = pure a
+foldFree eta (Free ffra) = join (eta $ fmap (foldFree eta) ffra)
+-- foldFree eta (Free ffra) = join (fmap (foldFree eta) (eta ffra))
+-- foldFree eta (Free ffra) = eta ffra >>= foldFree eta
 
 -- hoistFree
 freeMap :: (Functor f, Functor g) => (f :~> g) -> Free f a -> Free g a
@@ -335,6 +338,7 @@ type MemState = State [Int]
 type MemState' = State' [Int]
 
 -- | This function is used for demostrate f = free f . ins
+-- The interp is just foldFree
 interp :: (Functor f, Monad m) => (f :~> m) -> (Free f :~> m)
 interp phi = monad . freeMap phi
 
